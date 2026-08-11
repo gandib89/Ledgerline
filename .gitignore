@@ -1,0 +1,7 @@
+CLAUDE.md
+node_modules/
+.env
+.env.*
+dist/
+build/
+*.log
