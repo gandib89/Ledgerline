@@ -1,0 +1,209 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  memberships Membership[]
+  
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  memberships Membership[]
+  accounts    Account[]
+  taxCodes    TaxCode[]
+  fiscalYears FiscalYear[]
+  journalEntries JournalEntry[]
+  auditLogs       AuditLog[]
+  idempotencyKeys IdempotencyKey[]
+
+}
+
+model Membership {
+  id             String   @id @default(uuid())
+  userId         String
+  organizationId String
+  roleId         String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, organizationId])
+}
+
+
+model Role {
+  id   String @id @default(uuid())
+  name String @unique
+
+  rolePermissions RolePermission[]
+  memberships     Membership[]
+}
+
+model Permission {
+  id   String @id @default(uuid())
+  code String @unique
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id           String @id @default(uuid())
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@unique([roleId, permissionId])
+}
+model FiscalYear {
+  id             String   @id @default(uuid())
+  organizationId String
+  label          String
+  startDate      DateTime
+  endDate        DateTime
+  isClosed       Boolean  @default(false)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  periods      AccountingPeriod[]
+
+  @@unique([organizationId, label])
+}
+
+model AccountingPeriod {
+  id           String   @id @default(uuid())
+  fiscalYearId String
+  label        String
+  startDate    DateTime
+  endDate      DateTime
+  isOpen       Boolean  @default(true)
+
+  fiscalYear FiscalYear @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  journalEntries JournalEntry[]
+  @@unique([fiscalYearId, label])
+}
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+model Account {
+  id               String      @id @default(uuid())
+  organizationId   String
+  code             String
+  name             String
+  type             AccountType
+  isControlAccount Boolean     @default(false)
+  isBankAccount    Boolean     @default(false)
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  journalLines JournalLine[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, type])
+}
+
+model TaxCode {
+  id             String  @id @default(uuid())
+  organizationId String
+  code           String
+  name           String
+  rate           Decimal @db.Decimal(5, 4)
+  isActive       Boolean @default(true)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, code])
+}
+
+model JournalEntry {
+  id             String   @id @default(uuid())
+  organizationId String
+  periodId       String
+  entryNumber    String
+  documentType   String
+  entryDate      DateTime
+  description    String?
+  createdAt      DateTime @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  period       AccountingPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  lines        JournalLine[]
+
+  @@unique([organizationId, entryNumber])
+  @@index([organizationId, entryDate])
+}
+
+model JournalLine {
+  id             String  @id @default(uuid())
+  journalEntryId String
+  accountId      String
+  debit          Decimal @db.Decimal(18, 4)
+  credit         Decimal @db.Decimal(18, 4)
+  description    String?
+  lineNumber     Int
+
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  account      Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([journalEntryId])
+  @@index([accountId])
+}
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String?
+  action         String
+  entityType     String
+  entityId       String
+  before         Json?
+  after          Json?
+  ipAddress      String?
+  requestId      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+}
+
+model IdempotencyKey {
+  id             String   @id @default(uuid())
+  organizationId String
+  key            String
+  endpoint       String
+  responseStatus Int
+  responseBody   Json
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, key])
+}
