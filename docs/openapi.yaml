@@ -157,6 +157,396 @@ components:
           type: boolean
       required: [id, fiscalYearId, label, startDate, endDate, isOpen]
 
+    JournalLine:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        accountId:
+          type: string
+          format: uuid
+        debit:
+          type: string
+          example: "100.0000"
+        credit:
+          type: string
+          example: "0.0000"
+        description:
+          type: string
+        lineNumber:
+          type: integer
+      required: [id, accountId, debit, credit, lineNumber]
+
+    JournalEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        periodId:
+          type: string
+          format: uuid
+        entryNumber:
+          type: string
+        documentType:
+          type: string
+          example: invoice
+        entryDate:
+          type: string
+          format: date
+        description:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/JournalLine'
+      required: [id, periodId, entryNumber, documentType, entryDate, lines]
+
+    InvoiceLine:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        lineNo:
+          type: integer
+        description:
+          type: string
+        accountId:
+          type: string
+          format: uuid
+        quantity:
+          type: string
+          example: "2.000000"
+        unitPrice:
+          type: string
+          example: "500.0000"
+        discountPct:
+          type: string
+          example: "0.00"
+        taxCodeId:
+          type: string
+          format: uuid
+        taxAmount:
+          type: string
+          example: "130.0000"
+        lineTotal:
+          type: string
+          example: "1130.0000"
+      required: [lineNo, description, accountId, quantity, unitPrice, lineTotal]
+
+    Invoice:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        docNo:
+          type: string
+        docDate:
+          type: string
+          format: date
+        dueDate:
+          type: string
+          format: date
+        partyId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [draft, posted, paid, partially_paid, reversed]
+        subtotal:
+          type: string
+        discountAmount:
+          type: string
+        taxableAmount:
+          type: string
+        taxAmount:
+          type: string
+        grandTotal:
+          type: string
+        outstandingAmount:
+          type: string
+        version:
+          type: integer
+        journalEntryId:
+          type: string
+          format: uuid
+          nullable: true
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvoiceLine'
+      required: [id, docNo, docDate, partyId, status, grandTotal, outstandingAmount, version, lines]
+
+    Allocation:
+      type: object
+      properties:
+        invoiceId:
+          type: string
+          format: uuid
+        amount:
+          type: string
+      required: [invoiceId, amount]
+
+    Receipt:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        docNo:
+          type: string
+        docDate:
+          type: string
+          format: date
+        partyId:
+          type: string
+          format: uuid
+        bankAccountId:
+          type: string
+          format: uuid
+        amount:
+          type: string
+        unallocatedAmount:
+          type: string
+        allocations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Allocation'
+        journalEntryId:
+          type: string
+          format: uuid
+      required: [id, docNo, docDate, partyId, amount, allocations]
+
+    BankAccount:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        accountId:
+          type: string
+          format: uuid
+        bankName:
+          type: string
+        accountNoMasked:
+          type: string
+        openingBalance:
+          type: string
+        isActive:
+          type: boolean
+      required: [id, accountId, bankName, accountNoMasked, openingBalance, isActive]
+
+    BankStatement:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        bankAccountId:
+          type: string
+          format: uuid
+        fileName:
+          type: string
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        openingBalance:
+          type: string
+        closingBalance:
+          type: string
+        lineCount:
+          type: integer
+      required: [id, bankAccountId, fileName, periodStart, periodEnd, lineCount]
+
+    BankStatementLine:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        txnDate:
+          type: string
+          format: date
+        description:
+          type: string
+        reference:
+          type: string
+        debit:
+          type: string
+        credit:
+          type: string
+        runningBalance:
+          type: string
+        status:
+          type: string
+          enum: [unmatched, suggested, matched, reconciled, ignored]
+        matchConfidence:
+          type: number
+          nullable: true
+        matchedJournalLineId:
+          type: string
+          format: uuid
+          nullable: true
+      required: [id, txnDate, description, debit, credit, status]
+
+    Reconciliation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        bankAccountId:
+          type: string
+          format: uuid
+        asOfDate:
+          type: string
+          format: date
+        bookBalance:
+          type: string
+        bankBalance:
+          type: string
+        difference:
+          type: string
+        status:
+          type: string
+          enum: [in_progress, completed]
+      required: [id, bankAccountId, asOfDate, bookBalance, bankBalance, difference, status]
+
+    TrialBalanceRow:
+      type: object
+      properties:
+        accountId:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        debit:
+          type: string
+        credit:
+          type: string
+
+    ArAgingRow:
+      type: object
+      properties:
+        partyId:
+          type: string
+          format: uuid
+        partyName:
+          type: string
+        current:
+          type: string
+        days30:
+          type: string
+        days60:
+          type: string
+        days90Plus:
+          type: string
+        total:
+          type: string
+
+    GeneralLedgerRow:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        description:
+          type: string
+        debit:
+          type: string
+        credit:
+          type: string
+        runningBalance:
+          type: string
+
+    ProfitLossSection:
+      type: object
+      properties:
+        label:
+          type: string
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              accountName:
+                type: string
+              amount:
+                type: string
+        total:
+          type: string
+
+    BalanceSheetSection:
+      type: object
+      properties:
+        label:
+          type: string
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              accountName:
+                type: string
+              amount:
+                type: string
+        total:
+          type: string
+
+    BankReconciliationSummary:
+      type: object
+      properties:
+        bankAccountId:
+          type: string
+          format: uuid
+        bookBalance:
+          type: string
+        bankBalance:
+          type: string
+        difference:
+          type: string
+        unreconciledCount:
+          type: integer
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+        before:
+          type: object
+          nullable: true
+        after:
+          type: object
+          nullable: true
+        actorId:
+          type: string
+          format: uuid
+          nullable: true
+        ipAddress:
+          type: string
+        requestId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, action, entityType, entityId, createdAt]
+
   responses:
     BadRequest:
       description: Validation failed
@@ -524,3 +914,733 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Period'
+
+  /invoices:
+    get:
+      summary: List invoices
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: partyId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [draft, posted, paid, partially_paid, reversed]
+      responses:
+        '200':
+          description: List of invoices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Invoice'
+    post:
+      summary: Create a draft invoice
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                partyId:
+                  type: string
+                  format: uuid
+                docDate:
+                  type: string
+                  format: date
+                dueDate:
+                  type: string
+                  format: date
+                lines:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/InvoiceLine'
+              required: [partyId, docDate, lines]
+      responses:
+        '201':
+          description: Draft invoice created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /invoices/preview:
+    post:
+      summary: Server-computed totals for an in-progress invoice, before saving
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lines:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/InvoiceLine'
+              required: [lines]
+      responses:
+        '200':
+          description: Computed subtotal, tax, and grand total — not persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+
+  /invoices/{id}:
+    get:
+      summary: Get one invoice, with its lines
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invoice detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Update a draft invoice (posted invoices are immutable)
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version:
+                  type: integer
+                  description: Optimistic concurrency check — must match the current version
+                partyId:
+                  type: string
+                  format: uuid
+                docDate:
+                  type: string
+                  format: date
+                lines:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/InvoiceLine'
+              required: [version]
+      responses:
+        '200':
+          description: Draft updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '409':
+          description: Version mismatch — someone else edited this draft first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /invoices/{id}/post:
+    post:
+      summary: Post a draft invoice — creates its balanced journal entry
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invoice posted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /journal-entries:
+    get:
+      summary: List journal entries
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: periodId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of journal entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JournalEntry'
+    post:
+      summary: Post a manual journal voucher (control accounts blocked)
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                periodId:
+                  type: string
+                  format: uuid
+                entryDate:
+                  type: string
+                  format: date
+                description:
+                  type: string
+                lines:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/JournalLine'
+              required: [periodId, entryDate, lines]
+      responses:
+        '201':
+          description: Manual journal entry posted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JournalEntry'
+        '400':
+          description: Validation failed, or a line targets a control account (manual entry blocked)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /journal-entries/{id}:
+    get:
+      summary: Get one journal entry, with its lines
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Journal entry detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JournalEntry'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /journal-entries/{id}/reverse:
+    post:
+      summary: Post a reversal entry (equal and opposite) — the original is never edited
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Reversal entry posted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JournalEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /receipts:
+    get:
+      summary: List receipts
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: partyId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of receipts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Receipt'
+    post:
+      summary: Record a payment and allocate it across one or more invoices
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                partyId:
+                  type: string
+                  format: uuid
+                bankAccountId:
+                  type: string
+                  format: uuid
+                docDate:
+                  type: string
+                  format: date
+                amount:
+                  type: string
+                allocations:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Allocation'
+              required: [partyId, docDate, amount, allocations]
+      responses:
+        '201':
+          description: Receipt posted, invoices' outstanding amounts updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Receipt'
+        '400':
+          description: Validation failed, or an allocation exceeds an invoice's outstanding amount
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /receipts/{id}:
+    get:
+      summary: Get one receipt, with its allocations
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Receipt detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Receipt'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bank-accounts:
+    get:
+      summary: List bank accounts
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+      responses:
+        '200':
+          description: List of bank accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BankAccount'
+
+  /bank-accounts/{id}/statements:
+    post:
+      summary: Upload and import a bank statement CSV
+      description: >
+        All-or-nothing: the whole file is validated before any row is inserted.
+        Idempotent per file — re-uploading the same file (matched by file_sha256) is a no-op.
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required: [file]
+      responses:
+        '201':
+          description: Statement imported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankStatement'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /statements/{id}/lines:
+    get:
+      summary: List a statement's lines, with their match status
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of statement lines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BankStatementLine'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /lines/{id}/match:
+    post:
+      summary: Confirm a suggested match between a statement line and a ledger movement
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                journalLineId:
+                  type: string
+                  format: uuid
+              required: [journalLineId]
+      responses:
+        '200':
+          description: Line marked matched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankStatementLine'
+
+  /lines/{id}/create-entry:
+    post:
+      summary: Create a new journal entry directly from an unmatched statement line
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accountId:
+                  type: string
+                  format: uuid
+                  description: The offsetting account (e.g. Bank Charges)
+              required: [accountId]
+      responses:
+        '201':
+          description: Journal entry created and line marked matched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JournalEntry'
+
+  /lines/{id}/ignore:
+    post:
+      summary: Mark a statement line as ignored (not a real transaction to reconcile)
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Line marked ignored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankStatementLine'
+
+  /reconciliations:
+    post:
+      summary: Start a reconciliation for a bank account as of a date
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bankAccountId:
+                  type: string
+                  format: uuid
+                asOfDate:
+                  type: string
+                  format: date
+              required: [bankAccountId, asOfDate]
+      responses:
+        '201':
+          description: Reconciliation started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reconciliation'
+
+  /reconciliations/{id}/complete:
+    post:
+      summary: Complete a reconciliation (blocked unless the difference is zero)
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Reconciliation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reconciliation'
+        '400':
+          description: Difference is not zero — cannot complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/trial-balance:
+    get:
+      summary: Trial balance — every account's debit/credit total
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: periodId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: One row per account
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrialBalanceRow'
+
+  /reports/ar-aging:
+    get:
+      summary: Accounts receivable aging, bucketed by days overdue
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: asOfDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: One row per customer with an outstanding balance
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ArAgingRow'
+
+  /reports/general-ledger:
+    get:
+      summary: Account drill-down — every posted movement, with running balance
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: accountId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: periodId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: One row per journal line posted to this account
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GeneralLedgerRow'
+
+  /reports/profit-loss:
+    get:
+      summary: Profit & Loss for a date range
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: periodId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Income and expense sections, with net profit
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProfitLossSection'
+
+  /reports/balance-sheet:
+    get:
+      summary: Balance Sheet as of a date, with computed current-year earnings
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: asOfDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Asset, liability, and equity sections
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BalanceSheetSection'
+
+  /reports/bank-reconciliation:
+    get:
+      summary: Bank reconciliation summary — book vs. bank balance
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: bankAccountId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Book/bank/difference summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankReconciliationSummary'
+
+  /audit-log:
+    get:
+      summary: Filterable audit trail
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: entityType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: entityId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: List of audit log entries, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditLogEntry'
