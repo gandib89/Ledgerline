@@ -657,7 +657,10 @@ paths:
     post:
       summary: Rotate refresh token, issue new access token
       security: []
-      description: Reads the httpOnly refresh cookie; no request body.
+      description: >
+        Reads the httpOnly refresh cookie; no request body. Returns the user
+        alongside the token so a page reload can restore the session in a single
+        round trip — the access token is held in memory only and is lost on reload.
       responses:
         '200':
           description: New access token issued
@@ -666,6 +669,8 @@ paths:
               schema:
                 type: object
                 properties:
+                  user:
+                    $ref: '#/components/schemas/User'
                   accessToken:
                     type: string
         '401':

@@ -11,6 +11,9 @@ export const demoOrganizations = [
   { id: 'org-sherpa', name: 'Sherpa Ventures', role: 'Accountant', fiscalYear: 'FY 2082/83' },
 ];
 
+// Stands in for the httpOnly refresh cookie the mock layer cannot observe.
+export const mockSession = { active: false };
+
 const ok = (data, init) => HttpResponse.json({ data }, init);
 const fail = (code, message, status = 400) =>
   HttpResponse.json(
@@ -25,26 +28,35 @@ export const handlers = [
     if (body.email !== 'demo@ledgerline.app' || body.password !== 'ledger123') {
       return fail('invalid_credentials', 'Email or password is incorrect', 401);
     }
+    mockSession.active = true;
     return ok({ user: demoUser, accessToken: 'mock-access-token' });
   }),
 
   http.post('/api/v1/auth/register', async ({ request }) => {
     const body = await request.json();
     await delay(120);
+    mockSession.active = true;
     return ok(
-      {
-        user: { ...demoUser, name: body.name, email: body.email },
-        accessToken: 'mock-access-token',
-      },
+      { user: { ...demoUser, email: body.email }, accessToken: 'mock-access-token' },
       { status: 201 },
     );
   }),
 
-  http.post('/api/v1/auth/refresh', () =>
-    ok({ user: demoUser, accessToken: 'mock-refreshed-access-token' }),
-  ),
+  // The real refresh cookie is httpOnly and MSW cannot see it, so session state
+  // is modelled here. Without this the mock would refresh successfully with no
+  // prior login — the app boots by trying /auth/refresh, and every test would
+  // start authenticated.
+  http.post('/api/v1/auth/refresh', () => {
+    if (!mockSession.active) {
+      return fail('refresh_invalid', 'Refresh token invalid, reused, or expired', 401);
+    }
+    return ok({ user: demoUser, accessToken: 'mock-refreshed-access-token' });
+  }),
 
-  http.post('/api/v1/auth/logout', () => new HttpResponse(null, { status: 204 })),
+  http.post('/api/v1/auth/logout', () => {
+    mockSession.active = false;
+    return new HttpResponse(null, { status: 204 });
+  }),
 
   http.get('/api/v1/orgs', () => ok(demoOrganizations)),
 

@@ -2,6 +2,8 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
+  // Prisma's generated client is bundled output, not our source — never lint it.
+  { ignores: ['src/generated/**'] },
   js.configs.recommended,
   {
     languageOptions: {

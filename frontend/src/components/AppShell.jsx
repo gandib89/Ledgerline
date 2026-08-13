@@ -7,13 +7,14 @@ import { AsyncState } from './AsyncState.jsx';
 import { Icon } from './Icon.jsx';
 import { useToast } from './toast-context.js';
 
+// `to` is set for shipped screens; the rest stay parked until their day.
 const navigation = [
-  ['dashboard', 'Dashboard'],
-  ['customers', 'Customers'],
+  ['dashboard', 'Dashboard', '/dashboard'],
+  ['customers', 'Customers', '/customers'],
+  ['reports', 'Chart of accounts', '/accounts'],
   ['invoices', 'Invoices'],
   ['receipts', 'Receipts'],
   ['banking', 'Banking'],
-  ['reports', 'Reports'],
   ['audit', 'Audit trail'],
 ];
 
@@ -64,16 +65,16 @@ export function AppShell() {
 
         <div className="workspace-label">Workspace</div>
         <nav className="primary-nav" aria-label="Primary navigation">
-          {navigation.map(([icon, label]) => (
+          {navigation.map(([icon, label, to]) => (
             <NavLink
-              className={({ isActive }) => `nav-link ${isActive && icon === 'dashboard' ? 'nav-link-active' : ''}`}
+              className={({ isActive }) => `nav-link ${isActive && to ? 'nav-link-active' : ''}`}
               key={label}
-              to={icon === 'dashboard' ? '/dashboard' : `/dashboard?module=${icon}`}
+              to={to ?? `/dashboard?module=${icon}`}
               onClick={() => setNavigationOpen(false)}
             >
               <Icon name={icon} />
               <span>{label}</span>
-              {icon !== 'dashboard' && <span className="nav-soon">Soon</span>}
+              {!to && <span className="nav-soon">Soon</span>}
             </NavLink>
           ))}
         </nav>
@@ -113,8 +114,8 @@ export function AppShell() {
           <div className="topbar-meta">
             <span className="fiscal-pill">FY 2082/83</span>
             <div className="user-summary">
-              <span className="user-avatar" aria-hidden="true">{user?.name?.slice(0, 1) ?? 'A'}</span>
-              <span><strong>{user?.name ?? 'Account user'}</strong><small>{user?.email ?? 'Secure session'}</small></span>
+              <span className="user-avatar" aria-hidden="true">{user?.email?.slice(0, 1).toUpperCase() ?? 'A'}</span>
+              <span><strong>{user?.email ?? 'Account user'}</strong><small>Secure session</small></span>
             </div>
             <button className="secondary-button compact" type="button" onClick={signOut}>Sign out</button>
           </div>

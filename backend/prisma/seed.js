@@ -1,4 +1,5 @@
 import { prisma } from '../src/db/client.js';
+import { hashPassword } from '../src/lib/auth/password.js';
 
 const ROLES = ['Owner', 'Accountant', 'Clerk', 'Viewer'];
 
@@ -65,6 +66,39 @@ const PERIOD_LABELS = [
   'Magh', 'Falgun', 'Chaitra', 'Baisakh', 'Jestha', 'Ashadh',
 ];
 
+// plan §14 — one narrator org plus a second org that exists purely so tenant
+// isolation is demonstrable rather than merely claimed.
+const DEMO_PASSWORD = 'Demo@2026';
+
+const ORGS = [
+  {
+    name: 'Annapurna Trading Pvt. Ltd.',
+    members: [
+      ['sunita@annapurnatrading.com.np', 'Owner'],
+      ['rajan@annapurnatrading.com.np', 'Accountant'],
+      ['bimala@annapurnatrading.com.np', 'Clerk'],
+    ],
+    parties: [
+      ['CUS-001', 'Himalayan Trek Supplies Pvt. Ltd.', 30],
+      ['CUS-002', 'Everest Cafe Pvt. Ltd.', 15],
+      ['CUS-003', 'Sagarmatha Hardware Suppliers', 30],
+    ],
+  },
+  {
+    name: 'Sherpa Ventures Pvt. Ltd.',
+    members: [
+      // Sunita belongs to both orgs, so the demo can show the org switcher
+      // flipping the whole dataset for one logged-in user.
+      ['sunita@annapurnatrading.com.np', 'Owner'],
+      ['auditor@external.com.np', 'Viewer'],
+    ],
+    parties: [
+      ['CUS-101', 'Khumbu Expeditions Pvt. Ltd.', 30],
+      ['CUS-102', 'Lukla Guesthouse', 15],
+    ],
+  },
+];
+
 async function seedRolesAndPermissions() {
   const roles = {};
   for (const name of ROLES) {
@@ -97,14 +131,29 @@ async function seedRolesAndPermissions() {
   }
 
   console.log(`Seeded ${ROLES.length} roles, ${PERMISSIONS.length} permissions`);
+  return roles;
 }
 
-async function seedOrganization() {
-  let org = await prisma.organization.findFirst({ where: { name: 'Ledgerline Demo' } });
-  if (!org) {
-    org = await prisma.organization.create({ data: { name: 'Ledgerline Demo' } });
-  }
-  return org;
+async function seedUser(email, passwordHash) {
+  return prisma.user.upsert({
+    where: { email },
+    update: {},
+    create: { email, passwordHash },
+  });
+}
+
+async function seedOrganization(name) {
+  const existing = await prisma.organization.findFirst({ where: { name } });
+  if (existing) return existing;
+  return prisma.organization.create({ data: { name } });
+}
+
+async function seedMembership(userId, organizationId, roleId) {
+  await prisma.membership.upsert({
+    where: { userId_organizationId: { userId, organizationId } },
+    update: {},
+    create: { userId, organizationId, roleId },
+  });
 }
 
 async function seedFiscalYearAndPeriods(organizationId) {
@@ -114,12 +163,12 @@ async function seedFiscalYearAndPeriods(organizationId) {
     create: {
       organizationId,
       label: '2082/83',
-      startDate: new Date('2025-07-16'),
-      endDate: new Date('2026-07-15'),
+      startDate: new Date('2025-07-17'),
+      endDate: new Date('2026-07-16'),
     },
   });
 
-  let cursor = new Date(fiscalYear.startDate);
+  const cursor = new Date(fiscalYear.startDate);
   for (const label of PERIOD_LABELS) {
     const start = new Date(cursor);
     const end = new Date(cursor);
@@ -140,8 +189,6 @@ async function seedFiscalYearAndPeriods(organizationId) {
 
     cursor.setMonth(cursor.getMonth() + 1);
   }
-
-  console.log(`Seeded fiscal year 2082/83 with ${PERIOD_LABELS.length} periods`);
 }
 
 async function seedAccounts(organizationId) {
@@ -152,15 +199,41 @@ async function seedAccounts(organizationId) {
       create: { organizationId, code, name, type, ...flags },
     });
   }
-  console.log(`Seeded ${ACCOUNTS.length} accounts`);
+}
+
+async function seedParties(organizationId, parties) {
+  for (const [code, name, creditDays] of parties) {
+    await prisma.party.upsert({
+      where: { organizationId_code: { organizationId, code } },
+      update: {},
+      create: { organizationId, code, name, creditDays, type: 'CUSTOMER' },
+    });
+  }
 }
 
 async function main() {
-  await seedRolesAndPermissions();
-  const org = await seedOrganization();
-  await seedFiscalYearAndPeriods(org.id);
-  await seedAccounts(org.id);
-  console.log('Seed complete.');
+  const roles = await seedRolesAndPermissions();
+
+  // One hash reused for every demo user — Argon2id is deliberately slow, and
+  // this is throwaway demo data, not a credential store.
+  const passwordHash = await hashPassword(DEMO_PASSWORD);
+
+  for (const { name, members, parties } of ORGS) {
+    const org = await seedOrganization(name);
+
+    for (const [email, roleName] of members) {
+      const user = await seedUser(email, passwordHash);
+      await seedMembership(user.id, org.id, roles[roleName].id);
+    }
+
+    await seedFiscalYearAndPeriods(org.id);
+    await seedAccounts(org.id);
+    await seedParties(org.id, parties);
+
+    console.log(`Seeded ${name}: ${members.length} members, ${ACCOUNTS.length} accounts, ${parties.length} customers`);
+  }
+
+  console.log(`Seed complete. Demo users share the password: ${DEMO_PASSWORD}`);
 }
 
 main()

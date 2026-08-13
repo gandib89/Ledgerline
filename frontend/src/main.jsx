@@ -8,8 +8,10 @@ import { ToastProvider } from './components/ToastProvider.jsx';
 import { createAppQueryClient } from './query-client.js';
 import './index.css';
 
+// Day 2 wires the app to the real API. Mocks stay available behind a flag
+// (VITE_USE_MOCKS=true) for working on screens while the backend is down.
 async function enableMocking() {
-  if (!import.meta.env.DEV) return;
+  if (!import.meta.env.DEV || import.meta.env.VITE_USE_MOCKS !== 'true') return;
   const { worker } = await import('./mocks/browser.js');
   await worker.start({ onUnhandledRequest: 'bypass' });
 }

@@ -4,9 +4,8 @@ import { useAuth } from '../auth/auth-context.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function validate({ name, email, password, confirmation }) {
+function validate({ email, password, confirmation }) {
   const errors = {};
-  if (name.trim().length < 2) errors.name = 'Enter your full name';
   if (!EMAIL_PATTERN.test(email)) errors.email = 'Enter a valid email address';
   if (password.length < 8) errors.password = 'Password must be at least 8 characters';
   if (confirmation !== password) errors.confirmation = 'Passwords must match';
@@ -14,7 +13,9 @@ function validate({ name, email, password, confirmation }) {
 }
 
 export function RegisterPage() {
-  const [fields, setFields] = useState({ name: '', email: '', password: '', confirmation: '' });
+  // No `name` field: the User model and the OpenAPI contract both key a user by
+  // email only, and /auth/register uses a .strict() schema that rejects extras.
+  const [fields, setFields] = useState({ email: '', password: '', confirmation: '' });
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState('');
   const { register, status } = useAuth();
@@ -33,7 +34,7 @@ export function RegisterPage() {
     if (Object.keys(nextErrors).length) return;
 
     try {
-      await register({ name: fields.name.trim(), email: fields.email, password: fields.password });
+      await register({ email: fields.email, password: fields.password });
       navigate('/dashboard', { replace: true });
     } catch (error) {
       setServerError(error.message);
@@ -69,10 +70,6 @@ export function RegisterPage() {
           {serverError && <div className="form-alert" role="alert">{serverError}</div>}
 
           <form className="auth-form" onSubmit={handleSubmit} noValidate>
-            <label htmlFor="register-name">Full name</label>
-            <input id="register-name" name="name" autoComplete="name" value={fields.name} onChange={updateField} aria-invalid={Boolean(errors.name)} aria-describedby={errors.name ? 'register-name-error' : undefined} />
-            {errors.name && <p className="field-error" id="register-name-error">{errors.name}</p>}
-
             <label htmlFor="register-email">Email address</label>
             <input id="register-email" name="email" type="email" autoComplete="email" value={fields.email} onChange={updateField} aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? 'register-email-error' : undefined} />
             {errors.email && <p className="field-error" id="register-email-error">{errors.email}</p>}

@@ -18,7 +18,23 @@ model User {
   createdAt    DateTime @default(now())
 
   memberships Membership[]
+  refreshTokens RefreshToken[]
   
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  familyId  String
+  tokenHash String    @unique
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
 }
 
 model Organization {
@@ -34,7 +50,7 @@ model Organization {
   journalEntries JournalEntry[]
   auditLogs       AuditLog[]
   idempotencyKeys IdempotencyKey[]
-
+  parties Party[]
 }
 
 model Membership {
@@ -129,6 +145,30 @@ model Account {
   @@unique([organizationId, code])
   @@index([organizationId, type])
 }
+enum PartyType {
+  CUSTOMER
+  SUPPLIER
+  BOTH
+}
+
+model Party {
+  id             String    @id @default(uuid())
+  organizationId String
+  type           PartyType
+  code           String
+  name           String
+  panVatNo       String?
+  email          String?
+  phone          String?
+  address        String?
+  creditDays     Int       @default(30)
+  creditLimit    Decimal?  @db.Decimal(18, 4)
+  isActive       Boolean   @default(true)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, code])
+}
 
 model TaxCode {
   id             String  @id @default(uuid())
@@ -199,8 +239,9 @@ model IdempotencyKey {
   organizationId String
   key            String
   endpoint       String
-  responseStatus Int
-  responseBody   Json
+  requestHash    String
+  responseStatus Int?
+  responseBody   Json?
   createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
