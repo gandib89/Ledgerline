@@ -107,8 +107,8 @@ export function LoginPage() {
 
           <div className="demo-credentials">
             <span>Demo access</span>
-            <code>demo@ledgerline.app</code>
-            <code>ledger123</code>
+            <code>sunita@annapurnatrading.com.np</code>
+            <code>Demo@2026</code>
           </div>
 
           <p className="auth-switch">

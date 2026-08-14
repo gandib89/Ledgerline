@@ -4,6 +4,7 @@ import { prisma } from '../db/client.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { resolveTenant } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
+import { createPartySchemas } from '../../../shared/party-schema.js';
 
 const router = Router();
 
@@ -12,8 +13,8 @@ const router = Router();
 router.use(authenticate, resolveTenant);
 
 const ACCOUNT_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'];
-const PARTY_TYPES = ['customer', 'supplier', 'both'];
 const PAGE_SIZE = 20;
+const { createPartySchema, updatePartySchema } = createPartySchemas(z);
 
 function serializeAccount(account) {
   return {
@@ -104,15 +105,6 @@ router.get('/parties', authorize('report.view'), async (req, res, next) => {
   }
 });
 
-const createPartySchema = z.object({
-  type: z.enum(PARTY_TYPES),
-  code: z.string().min(1),
-  name: z.string().min(1),
-  email: z.string().email().optional(),
-  phone: z.string().optional(),
-  creditDays: z.number().int().min(0).optional(),
-}).strict();
-
 router.post('/parties', authorize('org.manage'), async (req, res, next) => {
   try {
     const { type, ...rest } = createPartySchema.parse(req.body);
@@ -129,6 +121,39 @@ router.post('/parties', authorize('org.manage'), async (req, res, next) => {
     };
 
     res.status(201).json(serializeParty(party));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/parties/:id', authorize('org.manage'), async (req, res, next) => {
+  try {
+    const id = z.string().uuid().parse(req.params.id);
+    const parsed = updatePartySchema.parse(req.body);
+    const before = await prisma.party.findFirst({ where: { id } });
+
+    if (!before) {
+      const err = new Error('Party not found');
+      err.status = 404;
+      err.code = 'party_not_found';
+      throw err;
+    }
+
+    const { type, ...rest } = parsed;
+    const party = await prisma.party.update({
+      where: { id },
+      data: { ...rest, ...(type ? { type: type.toUpperCase() } : {}) },
+    });
+
+    req.auditEntry = {
+      action: 'party.update',
+      entityType: 'Party',
+      entityId: party.id,
+      before: serializeParty(before),
+      after: serializeParty(party),
+    };
+
+    res.json(serializeParty(party));
   } catch (err) {
     next(err);
   }

@@ -62,11 +62,18 @@ describe('authentication pages', () => {
     renderAuthRoute('/dashboard');
 
     expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
-    await user.type(screen.getByLabelText('Email address'), 'demo@ledgerline.app');
-    await user.type(screen.getByLabelText('Password'), 'ledger123');
+    await user.type(screen.getByLabelText('Email address'), 'sunita@annapurnatrading.com.np');
+    await user.type(screen.getByLabelText('Password'), 'Demo@2026');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
 
     expect(await screen.findByRole('heading', { name: 'Financial control center' })).toBeInTheDocument();
+  });
+
+  it('shows the credentials created by the backend demo seed', async () => {
+    renderAuthRoute();
+
+    expect(await screen.findByText('sunita@annapurnatrading.com.np')).toBeInTheDocument();
+    expect(screen.getByText('Demo@2026')).toBeInTheDocument();
   });
 
   it('validates registration password confirmation', async () => {

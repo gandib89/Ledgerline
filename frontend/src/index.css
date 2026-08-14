@@ -985,6 +985,27 @@ p {
   text-align: left;
 }
 
+.data-table .table-actions {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table-action {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--emerald-dark);
+  font-weight: 700;
+}
+
+.table-action:hover {
+  border-color: var(--border);
+  background: var(--surface-muted);
+}
+
 .account-group {
   margin-bottom: 28px;
 }
@@ -1025,6 +1046,7 @@ p {
 }
 
 .search-field input {
+  min-height: 44px;
   padding: 8px 12px;
   min-width: 260px;
   border: 1px solid var(--border);
@@ -1084,6 +1106,7 @@ p {
 }
 
 .drawer-panel input {
+  min-height: 44px;
   padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
