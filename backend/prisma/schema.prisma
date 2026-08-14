@@ -48,9 +48,13 @@ model Organization {
   taxCodes    TaxCode[]
   fiscalYears FiscalYear[]
   journalEntries JournalEntry[]
+  journalLines    JournalLine[]
   auditLogs       AuditLog[]
   idempotencyKeys IdempotencyKey[]
   parties Party[]
+  documents       Document[]
+  documentSeries  DocumentSeries[]
+  entrySeries     EntrySeries[]
 }
 
 model Membership {
@@ -104,6 +108,9 @@ model FiscalYear {
 
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   periods      AccountingPeriod[]
+  documents      Document[]
+  documentSeries DocumentSeries[]
+  entrySeries    EntrySeries[]
 
   @@unique([organizationId, label])
 }
@@ -128,6 +135,28 @@ enum AccountType {
   EXPENSE
 }
 
+enum DocType {
+  INVOICE
+  CREDIT_NOTE
+  RECEIPT
+  BILL
+  SUPPLIER_PAYMENT
+}
+
+enum DocStatus {
+  DRAFT
+  POSTED
+  PARTIALLY_PAID
+  PAID
+  REVERSED
+}
+
+enum EntryStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
 model Account {
   id               String      @id @default(uuid())
   organizationId   String
@@ -141,6 +170,9 @@ model Account {
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   journalLines JournalLine[]
+  documentLines DocumentLine[]
+  taxCodesAsOutput TaxCode[] @relation("TaxCodeOutputAccount")
+  taxCodesAsInput  TaxCode[] @relation("TaxCodeInputAccount")
 
   @@unique([organizationId, code])
   @@index([organizationId, type])
@@ -166,55 +198,79 @@ model Party {
   isActive       Boolean   @default(true)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  documents    Document[]
+  journalLines JournalLine[]
 
   @@unique([organizationId, code])
 }
 
-model TaxCode {
-  id             String  @id @default(uuid())
-  organizationId String
-  code           String
-  name           String
-  rate           Decimal @db.Decimal(5, 4)
-  isActive       Boolean @default(true)
+enum TaxCodeType {
+  VAT
+  EXEMPT
+  ZERO
+}
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+model TaxCode {
+  id              String      @id @default(uuid())
+  organizationId  String
+  code            String
+  name            String
+  rate            Decimal     @db.Decimal(5, 4)
+  type            TaxCodeType @default(VAT)
+  outputAccountId String?
+  inputAccountId  String?
+  isActive        Boolean     @default(true)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  outputAccount Account?       @relation("TaxCodeOutputAccount", fields: [outputAccountId], references: [id], onDelete: Restrict)
+  inputAccount  Account?       @relation("TaxCodeInputAccount", fields: [inputAccountId], references: [id], onDelete: Restrict)
+  documentLines DocumentLine[]
 
   @@unique([organizationId, code])
 }
 
 model JournalEntry {
-  id             String   @id @default(uuid())
+  id             String      @id @default(uuid())
   organizationId String
   periodId       String
   entryNumber    String
   documentType   String
   entryDate      DateTime
   description    String?
-  createdAt      DateTime @default(now())
+  status         EntryStatus @default(DRAFT)
+  sourceId       String?
+  postedAt       DateTime?
+  postedById     String?
+  createdAt      DateTime    @default(now())
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   period       AccountingPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
   lines        JournalLine[]
+  sourceDocument Document?
 
   @@unique([organizationId, entryNumber])
-  @@index([organizationId, entryDate])
+  @@index([organizationId, entryDate, status])
 }
 
 model JournalLine {
   id             String  @id @default(uuid())
   journalEntryId String
+  organizationId String
   accountId      String
+  partyId        String?
   debit          Decimal @db.Decimal(18, 4)
   credit         Decimal @db.Decimal(18, 4)
   description    String?
   lineNumber     Int
 
   journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   account      Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  party        Party?       @relation(fields: [partyId], references: [id], onDelete: Restrict)
 
   @@index([journalEntryId])
-  @@index([accountId])
+  @@index([organizationId, accountId])
+  @@index([organizationId, partyId])
 }
 model AuditLog {
   id             String   @id @default(uuid())
@@ -247,4 +303,100 @@ model IdempotencyKey {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, key])
+}
+
+model DocumentSeries {
+  id             String  @id @default(uuid())
+  organizationId String
+  docType        DocType
+  fiscalYearId   String
+  prefix         String
+  padding        Int     @default(4)
+  nextNumber     Int     @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  fiscalYear   FiscalYear   @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, docType, fiscalYearId])
+}
+
+// journal_entries.entry_no is one shared sequence per (org, fiscal year)
+// across every source type — invoice-, receipt- and manual-sourced entries
+// interleave in the same JE-#### series (§6 worked examples). doc_no above
+// is per doc_type instead, which is why it needs its own table.
+model EntrySeries {
+  id             String @id @default(uuid())
+  organizationId String
+  fiscalYearId   String
+  prefix         String @default("JE")
+  padding        Int    @default(4)
+  nextNumber     Int    @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  fiscalYear   FiscalYear   @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, fiscalYearId])
+}
+
+model Document {
+  id             String    @id @default(uuid())
+  organizationId String
+  fiscalYearId   String
+  docType        DocType
+  docNo          String?
+  docDate        DateTime  @db.Date
+  dueDate        DateTime? @db.Date
+  partyId        String?
+
+  subtotal          Decimal @default(0) @db.Decimal(18, 4)
+  discountAmount    Decimal @default(0) @db.Decimal(18, 4)
+  taxableAmount     Decimal @default(0) @db.Decimal(18, 4)
+  taxAmount         Decimal @default(0) @db.Decimal(18, 4)
+  grandTotal        Decimal @default(0) @db.Decimal(18, 4)
+  allocatedAmount   Decimal @default(0) @db.Decimal(18, 4)
+  outstandingAmount Decimal @default(0) @db.Decimal(18, 4)
+
+  status           DocStatus @default(DRAFT)
+  parentDocumentId String?
+  referenceNo      String?
+  notes            String?
+  journalEntryId   String?   @unique
+  postedAt         DateTime?
+  postedById       String?
+  createdById      String?
+  version          Int       @default(0)
+  createdAt        DateTime  @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  fiscalYear     FiscalYear     @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  party          Party?         @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  parentDocument Document?      @relation("DocumentCorrection", fields: [parentDocumentId], references: [id], onDelete: Restrict)
+  corrections    Document[]     @relation("DocumentCorrection")
+  journalEntry   JournalEntry?  @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  lines          DocumentLine[]
+
+  @@unique([organizationId, docType, fiscalYearId, docNo])
+  @@index([organizationId, docType, docDate])
+  @@index([organizationId, partyId])
+}
+
+model DocumentLine {
+  id            String  @id @default(uuid())
+  documentId    String
+  lineNo        Int
+  description   String
+  accountId     String
+  quantity      Decimal @db.Decimal(18, 6)
+  unitPrice     Decimal @db.Decimal(18, 4)
+  discountPct   Decimal @default(0) @db.Decimal(5, 2)
+  taxableAmount Decimal @db.Decimal(18, 4)
+  taxCodeId     String?
+  taxAmount     Decimal @default(0) @db.Decimal(18, 4)
+  lineTotal     Decimal @db.Decimal(18, 4)
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  account  Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  taxCode  TaxCode? @relation(fields: [taxCodeId], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, lineNo])
 }

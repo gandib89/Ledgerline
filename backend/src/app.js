@@ -7,6 +7,9 @@ import { ZodError } from 'zod';
 import authRouter from './routes/auth.js';
 import orgsRouter from './routes/orgs.js';
 import mastersRouter from './routes/masters.js';
+import invoicesRouter from './routes/invoices.js';
+import journalEntriesRouter from './routes/journal-entries.js';
+import reportsRouter from './routes/reports.js';
 import { auditLog } from './middleware/audit-log.js';
 
 // The app is built here but never listens — index.js starts the server, tests
@@ -33,6 +36,9 @@ app.get('/healthz', (req, res) => {
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/orgs', orgsRouter);
 app.use('/api/v1', mastersRouter);
+app.use('/api/v1', invoicesRouter);
+app.use('/api/v1', journalEntriesRouter);
+app.use('/api/v1', reportsRouter);
 
 // Express identifies error handlers by arity — the 4th param must exist even
 // though it is unused here.

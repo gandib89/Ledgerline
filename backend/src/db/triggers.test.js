@@ -6,6 +6,7 @@ import { prisma } from './client.js';
 async function resetDb() {
   await prisma.$executeRawUnsafe(`
     TRUNCATE
+      "DocumentLine", "Document", "DocumentSeries",
       "JournalLine", "JournalEntry", "Account", "TaxCode",
       "AccountingPeriod", "FiscalYear", "Membership", "RolePermission",
       "Role", "Permission", "Organization", "User", "AuditLog", "IdempotencyKey"
@@ -75,8 +76,8 @@ describe('Trigger 1: journal entries must balance', () => {
           entryDate: new Date('2025-07-20'),
           lines: {
             create: [
-              { accountId: cash.id, debit: '100.00', credit: '0', lineNumber: 1 },
-              { accountId: revenue.id, debit: '0', credit: '90.00', lineNumber: 2 },
+              { organizationId: org.id, accountId: cash.id, debit: '100.00', credit: '0', lineNumber: 1 },
+              { organizationId: org.id, accountId: revenue.id, debit: '0', credit: '90.00', lineNumber: 2 },
             ],
           },
         },
@@ -97,8 +98,8 @@ describe('Trigger 1: journal entries must balance', () => {
         entryDate: new Date('2025-07-20'),
         lines: {
           create: [
-            { accountId: cash.id, debit: '100.00', credit: '0', lineNumber: 1 },
-            { accountId: revenue.id, debit: '0', credit: '100.00', lineNumber: 2 },
+            { organizationId: org.id, accountId: cash.id, debit: '100.00', credit: '0', lineNumber: 1 },
+            { organizationId: org.id, accountId: revenue.id, debit: '0', credit: '100.00', lineNumber: 2 },
           ],
         },
       },
@@ -142,8 +143,8 @@ describe('Trigger 3: period lock', () => {
           entryDate: new Date('2025-08-20'),
           lines: {
             create: [
-              { accountId: cash.id, debit: '50.00', credit: '0', lineNumber: 1 },
-              { accountId: revenue.id, debit: '0', credit: '50.00', lineNumber: 2 },
+              { organizationId: org.id, accountId: cash.id, debit: '50.00', credit: '0', lineNumber: 1 },
+              { organizationId: org.id, accountId: revenue.id, debit: '0', credit: '50.00', lineNumber: 2 },
             ],
           },
         },
@@ -161,8 +162,8 @@ describe('Trigger 3: period lock', () => {
         entryDate: new Date('2025-07-25'),
         lines: {
           create: [
-            { accountId: cash.id, debit: '25.00', credit: '0', lineNumber: 1 },
-            { accountId: revenue.id, debit: '0', credit: '25.00', lineNumber: 2 },
+            { organizationId: org.id, accountId: cash.id, debit: '25.00', credit: '0', lineNumber: 1 },
+            { organizationId: org.id, accountId: revenue.id, debit: '0', credit: '25.00', lineNumber: 2 },
           ],
         },
       },
@@ -182,7 +183,7 @@ describe('jl_sign_check: a line is a debit or a credit, never both', () => {
           documentType: 'manual',
           entryDate: new Date('2025-07-26'),
           lines: {
-            create: [{ accountId: cash.id, debit: '10.00', credit: '10.00', lineNumber: 1 }],
+            create: [{ organizationId: org.id, accountId: cash.id, debit: '10.00', credit: '10.00', lineNumber: 1 }],
           },
         },
       })

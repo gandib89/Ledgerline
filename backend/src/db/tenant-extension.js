@@ -3,6 +3,7 @@ import { requestContext } from '../lib/request-context.js';
 const TENANT_SCOPED_MODELS = new Set([
   'Membership', 'FiscalYear', 'Account', 'TaxCode',
   'JournalEntry', 'AuditLog', 'IdempotencyKey', 'Party',
+  'Document', 'DocumentSeries', 'JournalLine', 'EntrySeries',
 ]);
 
 const SINGLE_RECORD_READS = ['findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'update', 'delete'];
