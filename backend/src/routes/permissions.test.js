@@ -40,6 +40,19 @@ beforeAll(async () => {
 afterAll(() => prisma.$disconnect());
 
 describe('permissions', () => {
+  it('returns the current role and permission codes with each organization', async () => {
+    const res = await request(app).get('/api/v1/orgs').set(owner.authOnly);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([
+      expect.objectContaining({
+        id: owner.orgId,
+        role: expect.objectContaining({ name: 'Owner' }),
+        permissions: expect.arrayContaining(['invoice.create', 'invoice.post', 'report.view']),
+      }),
+    ]);
+  });
+
   // PERM-1 — the org creator must be able to administer it, or the org is
   // orphaned the moment it is created.
   it('PERM-1: the org creator is an Owner with org.manage', async () => {

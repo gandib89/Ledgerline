@@ -52,6 +52,21 @@ components:
         createdAt:
           type: string
           format: date-time
+        role:
+          type: object
+          description: Current user's role in this organization. Present on list responses.
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+          required: [id, name]
+        permissions:
+          type: array
+          description: Current membership's permission codes. Present on list responses.
+          items:
+            type: string
       required: [id, name, isActive, createdAt]
 
     Member:
@@ -94,6 +109,27 @@ components:
         isActive:
           type: boolean
       required: [id, code, name, type, isControlAccount, isBankAccount, isActive]
+
+    TaxCode:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        rate:
+          type: string
+          description: Exact decimal rate serialized as a string.
+          example: "0.1300"
+        type:
+          type: string
+          enum: [VAT, EXEMPT, ZERO]
+        isActive:
+          type: boolean
+      required: [id, code, name, rate, type, isActive]
 
     Party:
       type: object
@@ -884,6 +920,21 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /tax-codes:
+    get:
+      summary: List active tax codes for invoice entry
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+      responses:
+        '200':
+          description: Active tax codes ordered by code
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TaxCode'
+
   /parties/{id}:
     patch:
       summary: Update a customer or supplier
@@ -992,6 +1043,27 @@ paths:
           schema:
             type: string
             enum: [draft, posted, paid, partially_paid, reversed]
+        - name: from
+          in: query
+          required: false
+          description: Inclusive document-date lower bound.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          description: Inclusive document-date upper bound.
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
       responses:
         '200':
           description: List of invoices

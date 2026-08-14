@@ -83,6 +83,28 @@ function invoiceBody(overrides = {}) {
 }
 
 describe('the Day 3 checkpoint: create, preview, post', () => {
+  it('lists active tax codes with exact decimal rates', async () => {
+    const response = await request(app).get('/api/v1/tax-codes').set(owner.headers);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([
+      expect.objectContaining({ code: 'VAT13', name: 'VAT 13%', rate: '0.1300', type: 'VAT', isActive: true }),
+    ]);
+  });
+
+  it('filters invoices inclusively by document date', async () => {
+    await request(app).post('/api/v1/invoices').set(owner.headers).send(invoiceBody({ docDate: '2025-07-19' }));
+    await request(app).post('/api/v1/invoices').set(owner.headers).send(invoiceBody({ docDate: '2025-07-25' }));
+    await request(app).post('/api/v1/invoices').set(owner.headers).send(invoiceBody({ docDate: '2025-07-26' }));
+
+    const response = await request(app)
+      .get('/api/v1/invoices?from=2025-07-20&to=2025-07-25')
+      .set(owner.headers);
+
+    expect(response.status).toBe(200);
+    expect(response.body.map((invoice) => invoice.docDate)).toEqual(['2025-07-25']);
+  });
+
   it('creates a draft, previews totals, posts, and gets back a balanced journal entry', async () => {
     const preview = await request(app)
       .post('/api/v1/invoices/preview')

@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/authenticate.js';
 import { resolveTenant } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
 import { createPartySchemas } from '../../../shared/party-schema.js';
+import { serializeTaxCode } from './day3-contracts.js';
 
 const router = Router();
 
@@ -121,6 +122,18 @@ router.post('/parties', authorize('org.manage'), async (req, res, next) => {
     };
 
     res.status(201).json(serializeParty(party));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/tax-codes', authorize('report.view'), async (req, res, next) => {
+  try {
+    const taxCodes = await prisma.taxCode.findMany({
+      where: { isActive: true },
+      orderBy: { code: 'asc' },
+    });
+    res.json(taxCodes.map(serializeTaxCode));
   } catch (err) {
     next(err);
   }

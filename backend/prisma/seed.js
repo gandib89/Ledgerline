@@ -201,6 +201,31 @@ async function seedAccounts(organizationId) {
   }
 }
 
+async function seedTaxCodes(organizationId) {
+  const outputAccount = await prisma.account.findUniqueOrThrow({
+    where: { organizationId_code: { organizationId, code: '2200' } },
+  });
+
+  await prisma.taxCode.upsert({
+    where: { organizationId_code: { organizationId, code: 'VAT13' } },
+    update: {
+      name: 'VAT 13%',
+      rate: '0.1300',
+      type: 'VAT',
+      outputAccountId: outputAccount.id,
+      isActive: true,
+    },
+    create: {
+      organizationId,
+      code: 'VAT13',
+      name: 'VAT 13%',
+      rate: '0.1300',
+      type: 'VAT',
+      outputAccountId: outputAccount.id,
+    },
+  });
+}
+
 async function seedParties(organizationId, parties) {
   for (const [code, name, creditDays] of parties) {
     await prisma.party.upsert({
@@ -228,6 +253,7 @@ async function main() {
 
     await seedFiscalYearAndPeriods(org.id);
     await seedAccounts(org.id);
+    await seedTaxCodes(org.id);
     await seedParties(org.id, parties);
 
     console.log(`Seeded ${name}: ${members.length} members, ${ACCOUNTS.length} accounts, ${parties.length} customers`);

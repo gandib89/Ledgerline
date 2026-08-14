@@ -4,6 +4,7 @@ import { prisma } from '../db/client.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { resolveTenantFrom } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
+import { serializeOrganizationMembership } from './day3-contracts.js';
 
 const router = Router();
 
@@ -28,9 +29,12 @@ router.get('/', authenticate, async (req, res, next) => {
   try {
     const memberships = await prisma.membership.findMany({
       where: { userId: req.userId, isActive: true },
-      include: { organization: true },
+      include: {
+        organization: true,
+        role: { include: { rolePermissions: { include: { permission: true } } } },
+      },
     });
-    res.json(memberships.map((m) => serializeOrg(m.organization)));
+    res.json(memberships.map(serializeOrganizationMembership));
   } catch (err) {
     next(err);
   }

@@ -8,6 +8,7 @@ import { createDraftInvoice, updateDraftInvoice, previewInvoice } from '../lib/i
 import { postDocument } from '../lib/accounting/post-document.js';
 import { notFound } from '../lib/accounting/errors.js';
 import { serializeJournalEntry } from './journal-entries.js';
+import { buildInvoiceDateFilter } from './day3-contracts.js';
 
 const router = Router();
 
@@ -144,7 +145,12 @@ router.get('/invoices', authorize('report.view'), async (req, res, next) => {
     const query = z.object({
       status: z.enum(STATUSES).optional(),
       partyId: z.string().uuid().optional(),
+      from: z.string().regex(DATE_RE).optional(),
+      to: z.string().regex(DATE_RE).optional(),
       page: z.coerce.number().int().min(1).default(1),
+    }).refine(({ from, to }) => !from || !to || from <= to, {
+      message: 'from must be on or before to',
+      path: ['from'],
     }).parse(req.query);
 
     const docs = await prisma.document.findMany({
@@ -152,6 +158,7 @@ router.get('/invoices', authorize('report.view'), async (req, res, next) => {
         docType: 'INVOICE',
         ...(query.status ? { status: query.status.toUpperCase() } : {}),
         ...(query.partyId ? { partyId: query.partyId } : {}),
+        ...buildInvoiceDateFilter(query),
       },
       orderBy: { docDate: 'desc' },
       skip: (query.page - 1) * PAGE_SIZE,

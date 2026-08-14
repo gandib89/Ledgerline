@@ -6,6 +6,10 @@ import { CustomersPage } from './pages/CustomersPage.jsx';
 import { DashboardPage } from './pages/DashboardPage.jsx';
 import { LoginPage } from './pages/LoginPage.jsx';
 import { RegisterPage } from './pages/RegisterPage.jsx';
+import { InvoiceDetailPage } from './pages/InvoiceDetailPage.jsx';
+import { InvoiceEditorPage } from './pages/InvoiceEditorPage.jsx';
+import { InvoicesPage } from './pages/InvoicesPage.jsx';
+import { TrialBalancePage } from './pages/TrialBalancePage.jsx';
 
 function App() {
   return (
@@ -17,6 +21,11 @@ function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/accounts" element={<AccountsPage />} />
           <Route path="/customers" element={<CustomersPage />} />
+          <Route path="/invoices" element={<InvoicesPage />} />
+          <Route path="/invoices/new" element={<InvoiceEditorPage />} />
+          <Route path="/invoices/:id/edit" element={<InvoiceEditorPage />} />
+          <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+          <Route path="/reports/trial-balance" element={<TrialBalancePage />} />
         </Route>
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

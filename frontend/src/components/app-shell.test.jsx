@@ -68,4 +68,25 @@ describe('AppShell', () => {
       'false',
     );
   });
+
+  it('links to the shipped invoice and Trial Balance screens', async () => {
+    render(
+      <QueryClientProvider client={createAppQueryClient()}>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <ToastProvider>
+            <AuthProvider>
+              <Routes>
+                <Route element={<AppShell />}>
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                </Route>
+              </Routes>
+            </AuthProvider>
+          </ToastProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole('link', { name: 'Invoices' })).toHaveAttribute('href', '/invoices');
+    expect(screen.getByRole('link', { name: 'Trial Balance' })).toHaveAttribute('href', '/reports/trial-balance');
+  });
 });

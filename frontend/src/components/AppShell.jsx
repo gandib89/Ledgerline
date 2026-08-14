@@ -11,8 +11,9 @@ import { useToast } from './toast-context.js';
 const navigation = [
   ['dashboard', 'Dashboard', '/dashboard'],
   ['customers', 'Customers', '/customers'],
+  ['invoices', 'Invoices', '/invoices'],
+  ['reports', 'Trial Balance', '/reports/trial-balance'],
   ['reports', 'Chart of accounts', '/accounts'],
-  ['invoices', 'Invoices'],
   ['receipts', 'Receipts'],
   ['banking', 'Banking'],
   ['audit', 'Audit trail'],
@@ -30,6 +31,7 @@ export function AppShell() {
     queryFn: () => apiRequest('/orgs'),
   });
   const activeOrganizationId = selectedOrganizationId || organizations.data?.[0]?.id || '';
+  const activeOrganization = organizations.data?.find(({ id }) => id === activeOrganizationId) ?? null;
 
   useEffect(() => {
     if (activeOrganizationId) setActiveOrganization(activeOrganizationId);
@@ -122,7 +124,7 @@ export function AppShell() {
         </header>
 
         <main className="app-content" id="main-content" tabIndex="-1">
-          <Outlet context={{ activeOrganizationId }} />
+          <Outlet context={{ activeOrganizationId, activeOrganization }} />
         </main>
       </div>
     </div>
