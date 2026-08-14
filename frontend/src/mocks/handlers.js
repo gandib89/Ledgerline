@@ -2,13 +2,12 @@ import { delay, http, HttpResponse } from 'msw';
 
 export const demoUser = {
   id: 'user-1',
-  name: 'Aarav Shrestha',
-  email: 'demo@ledgerline.app',
+  email: 'sunita@annapurnatrading.com.np',
 };
 
 export const demoOrganizations = [
-  { id: 'org-annapurna', name: 'Annapurna Digital', role: 'Owner', fiscalYear: 'FY 2082/83' },
-  { id: 'org-sherpa', name: 'Sherpa Ventures', role: 'Accountant', fiscalYear: 'FY 2082/83' },
+  { id: 'org-annapurna', name: 'Annapurna Trading Pvt. Ltd.' },
+  { id: 'org-sherpa', name: 'Sherpa Ventures Pvt. Ltd.' },
 ];
 
 // Stands in for the httpOnly refresh cookie the mock layer cannot observe.
@@ -25,7 +24,7 @@ export const handlers = [
   http.post('/api/v1/auth/login', async ({ request }) => {
     const body = await request.json();
     await delay(120);
-    if (body.email !== 'demo@ledgerline.app' || body.password !== 'ledger123') {
+    if (body.email !== 'sunita@annapurnatrading.com.np' || body.password !== 'Demo@2026') {
       return fail('invalid_credentials', 'Email or password is incorrect', 401);
     }
     mockSession.active = true;

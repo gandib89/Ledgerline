@@ -1,25 +1,39 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
+import { z } from 'zod';
 import { AsyncState } from '../components/AsyncState.jsx';
 import { apiRequest } from '../lib/api-client.js';
 import { useToast } from '../components/toast-context.js';
+import { createPartySchemas } from '../../../shared/party-schema.js';
 
 const PAGE_SIZE = 20;
 
 const EMPTY_FORM = { type: 'customer', code: '', name: '', email: '', phone: '', creditDays: 30 };
+const { createPartySchema, updatePartySchema } = createPartySchemas(z);
 
-// Mirrors the server's Zod schema. The server is still the authority — this
-// only spares the user a round trip for obvious mistakes.
-function validate(form) {
-  const errors = {};
-  if (!form.code.trim()) errors.code = 'Code is required';
-  if (!form.name.trim()) errors.name = 'Name is required';
-  if (form.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email)) errors.email = 'Enter a valid email';
-  if (Number.isNaN(Number(form.creditDays)) || Number(form.creditDays) < 0) {
-    errors.creditDays = 'Credit days must be 0 or more';
+function validationErrors(result) {
+  if (result.success) return {};
+  return Object.fromEntries(result.error.issues.map((issue) => [issue.path[0], issue.message]));
+}
+
+function partyInput(form, editing) {
+  const input = {
+    type: form.type,
+    code: form.code.trim(),
+    name: form.name.trim(),
+    creditDays: Number(form.creditDays),
+  };
+
+  if (editing) {
+    input.email = form.email.trim() || null;
+    input.phone = form.phone.trim() || null;
+  } else {
+    if (form.email.trim()) input.email = form.email.trim();
+    if (form.phone.trim()) input.phone = form.phone.trim();
   }
-  return errors;
+
+  return input;
 }
 
 export function CustomersPage() {
@@ -30,6 +44,7 @@ export function CustomersPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingParty, setEditingParty] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
 
@@ -39,45 +54,65 @@ export function CustomersPage() {
     enabled: Boolean(activeOrganizationId),
   });
 
-  const createParty = useMutation({
-    mutationFn: (input) => apiRequest('/parties', { method: 'POST', body: input }),
-    onSuccess: (party) => {
+  const saveParty = useMutation({
+    mutationFn: ({ id, input }) => apiRequest(id ? `/parties/${id}` : '/parties', {
+      method: id ? 'PATCH' : 'POST',
+      body: input,
+    }),
+    onSuccess: (party, { id }) => {
       // Invalidate every page/search combination, not just the current one.
       queryClient.invalidateQueries({ queryKey: ['parties'] });
-      notify({ title: 'Customer created', message: party.name, tone: 'success' });
+      notify({ title: id ? 'Customer updated' : 'Customer created', message: party.name, tone: 'success' });
       closeDrawer();
     },
-    onError: (error) => {
-      notify({ title: 'Could not create customer', message: error.message, tone: 'error' });
+    onError: (error, { id }) => {
+      notify({ title: id ? 'Could not update customer' : 'Could not create customer', message: error.message, tone: 'error' });
     },
   });
 
   function closeDrawer() {
     setDrawerOpen(false);
+    setEditingParty(null);
     setForm(EMPTY_FORM);
     setErrors({});
   }
 
+  function openNewCustomer() {
+    setEditingParty(null);
+    setForm(EMPTY_FORM);
+    setErrors({});
+    setDrawerOpen(true);
+  }
+
+  function openEditCustomer(party) {
+    setEditingParty(party);
+    setForm({
+      type: party.type,
+      code: party.code,
+      name: party.name,
+      email: party.email ?? '',
+      phone: party.phone ?? '',
+      creditDays: party.creditDays,
+    });
+    setErrors({});
+    setDrawerOpen(true);
+  }
+
   function submit(event) {
     event.preventDefault();
-    const found = validate(form);
+    const input = partyInput(form, Boolean(editingParty));
+    const schema = editingParty ? updatePartySchema : createPartySchema;
+    const parsed = schema.safeParse(input);
+    const found = validationErrors(parsed);
     setErrors(found);
     if (Object.keys(found).length > 0) return;
 
-    createParty.mutate({
-      type: form.type,
-      code: form.code.trim(),
-      name: form.name.trim(),
-      // The server schema is .strict() — sending empty strings for optional
-      // fields would fail validation, so drop them entirely.
-      ...(form.email ? { email: form.email.trim() } : {}),
-      ...(form.phone ? { phone: form.phone.trim() } : {}),
-      creditDays: Number(form.creditDays),
-    });
+    saveParty.mutate({ id: editingParty?.id, input: parsed.data });
   }
 
   function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: undefined }));
   }
 
   return (
@@ -88,7 +123,7 @@ export function CustomersPage() {
           <h1>Customers</h1>
           <p>Everyone you invoice, and the credit terms they trade on.</p>
         </div>
-        <button className="primary-button" type="button" onClick={() => setDrawerOpen(true)}>
+        <button className="primary-button" type="button" onClick={openNewCustomer}>
           New customer
         </button>
       </div>
@@ -126,6 +161,7 @@ export function CustomersPage() {
                 <th scope="col">Name</th>
                 <th scope="col">Email</th>
                 <th scope="col">Credit days</th>
+                <th scope="col"><span className="visually-hidden">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -135,6 +171,16 @@ export function CustomersPage() {
                   <td>{party.name}</td>
                   <td>{party.email ?? '—'}</td>
                   <td className="numeric">{party.creditDays}</td>
+                  <td className="table-actions">
+                    <button
+                      className="table-action"
+                      type="button"
+                      aria-label={`Edit ${party.name}`}
+                      onClick={() => openEditCustomer(party)}
+                    >
+                      Edit
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -159,31 +205,36 @@ export function CustomersPage() {
       )}
 
       {drawerOpen && (
-        <div className="drawer" role="dialog" aria-modal="true" aria-label="New customer">
+        <div
+          className="drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label={editingParty ? 'Edit customer' : 'New customer'}
+        >
           <form className="drawer-panel" onSubmit={submit} noValidate>
-            <h2>New customer</h2>
+            <h2>{editingParty ? 'Edit customer' : 'New customer'}</h2>
 
             <label>
               Code
-              <input value={form.code} onChange={(e) => update('code', e.target.value)} aria-invalid={Boolean(errors.code)} />
-              {errors.code && <span className="field-error">{errors.code}</span>}
+              <input autoFocus={!editingParty} value={form.code} onChange={(e) => update('code', e.target.value)} aria-invalid={Boolean(errors.code)} />
+              {errors.code && <span className="field-error" role="alert">{errors.code}</span>}
             </label>
 
             <label>
               Name
-              <input value={form.name} onChange={(e) => update('name', e.target.value)} aria-invalid={Boolean(errors.name)} />
-              {errors.name && <span className="field-error">{errors.name}</span>}
+              <input autoFocus={Boolean(editingParty)} value={form.name} onChange={(e) => update('name', e.target.value)} aria-invalid={Boolean(errors.name)} />
+              {errors.name && <span className="field-error" role="alert">{errors.name}</span>}
             </label>
 
             <label>
               Email
               <input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} aria-invalid={Boolean(errors.email)} />
-              {errors.email && <span className="field-error">{errors.email}</span>}
+              {errors.email && <span className="field-error" role="alert">{errors.email}</span>}
             </label>
 
             <label>
               Phone
-              <input value={form.phone} onChange={(e) => update('phone', e.target.value)} />
+              <input type="tel" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
             </label>
 
             <label>
@@ -195,15 +246,17 @@ export function CustomersPage() {
                 onChange={(e) => update('creditDays', e.target.value)}
                 aria-invalid={Boolean(errors.creditDays)}
               />
-              {errors.creditDays && <span className="field-error">{errors.creditDays}</span>}
+              {errors.creditDays && <span className="field-error" role="alert">{errors.creditDays}</span>}
             </label>
 
             <div className="drawer-actions">
               <button className="secondary-button" type="button" onClick={closeDrawer}>
                 Cancel
               </button>
-              <button className="primary-button" type="submit" disabled={createParty.isPending}>
-                {createParty.isPending ? 'Creating…' : 'Create customer'}
+              <button className="primary-button" type="submit" disabled={saveParty.isPending}>
+                {saveParty.isPending
+                  ? (editingParty ? 'Saving…' : 'Creating…')
+                  : (editingParty ? 'Save changes' : 'Create customer')}
               </button>
             </div>
           </form>

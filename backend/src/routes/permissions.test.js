@@ -108,4 +108,19 @@ describe('permissions', () => {
       .send({ type: 'customer', code: 'X-2', name: 'After Promote' });
     expect(after.status).toBe(201);
   });
+
+  it('PERM-6: a Viewer cannot update master data', async () => {
+    const created = await request(app)
+      .post('/api/v1/parties')
+      .set(owner.headers)
+      .send({ type: 'customer', code: 'LOCKED-1', name: 'Owner Customer' });
+
+    const res = await request(app)
+      .patch(`/api/v1/parties/${created.body.id}`)
+      .set(members.Viewer)
+      .send({ name: 'Viewer overwrite' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('forbidden');
+  });
 });

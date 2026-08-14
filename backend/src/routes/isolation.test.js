@@ -85,4 +85,58 @@ describe('tenant isolation', () => {
     const res = await request(app).get('/api/v1/orgs').set(alice.authOnly);
     expect(res.body.map((o) => o.name)).toEqual(['Alice Trading']);
   });
+
+  it('updates a party in the active organization and records the before/after audit', async () => {
+    const party = await prisma.party.findFirst({ where: { code: 'A-001' } });
+
+    const res = await request(app)
+      .patch(`/api/v1/parties/${party.id}`)
+      .set(alice.headers)
+      .send({ name: 'Alice Customer Updated', email: 'accounts@alice.test', creditDays: 45 });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id: party.id,
+      code: 'A-001',
+      name: 'Alice Customer Updated',
+      email: 'accounts@alice.test',
+      creditDays: 45,
+    });
+
+    await expect.poll(async () => prisma.auditLog.findFirst({
+      where: { action: 'party.update', entityId: party.id },
+    })).toMatchObject({
+      organizationId: alice.orgId,
+      userId: alice.userId,
+      before: expect.objectContaining({ name: 'Alice Customer' }),
+      after: expect.objectContaining({ name: 'Alice Customer Updated' }),
+    });
+  });
+
+  it('cannot update a party belonging to another organization', async () => {
+    const bobParty = await prisma.party.findFirst({ where: { code: 'B-001' } });
+
+    const res = await request(app)
+      .patch(`/api/v1/parties/${bobParty.id}`)
+      .set(alice.headers)
+      .send({ name: 'Cross-tenant overwrite' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('party_not_found');
+
+    const unchanged = await prisma.party.findUnique({ where: { id: bobParty.id } });
+    expect(unchanged.name).toBe('Bob Customer');
+  });
+
+  it('rejects an empty party update', async () => {
+    const party = await prisma.party.findFirst({ where: { code: 'A-001' } });
+
+    const res = await request(app)
+      .patch(`/api/v1/parties/${party.id}`)
+      .set(alice.headers)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('validation_error');
+  });
 });
