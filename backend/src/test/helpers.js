@@ -6,6 +6,7 @@ import { prisma } from '../db/client.js';
 export async function resetDb() {
   await prisma.$executeRawUnsafe(`
     TRUNCATE
+      "DocumentLine", "Document", "DocumentSeries", "EntrySeries",
       "JournalLine", "JournalEntry", "Account", "TaxCode", "Party",
       "AccountingPeriod", "FiscalYear", "Membership", "RolePermission",
       "Role", "Permission", "Organization", "RefreshToken", "User",
