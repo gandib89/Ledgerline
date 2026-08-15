@@ -1,67 +1,13 @@
 import { prisma } from '../../db/client.js';
-import { computeLine, sumLines } from '../accounting/line-math.js';
+import { sumLines } from '../accounting/line-math.js';
+import { resolveLines, toDocumentLineData } from '../accounting/document-lines.js';
 import { findFiscalYearForDate } from '../accounting/fiscal-year.js';
-import { notFound, conflict, businessRule } from '../accounting/errors.js';
-import { dec } from '../money.js';
+import { notFound, conflict } from '../accounting/errors.js';
 
 function addDays(date, days) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
-}
-
-// DocumentLine has no discountAmount column — only discountPct is stored per
-// line (§5); discountAmount only exists as a computed value for sumLines'
-// document-level aggregation. Strip it before writing a line row.
-function toDocumentLineData({ discountAmount: _discountAmount, ...line }) {
-  return line;
-}
-
-// Totals are never accepted from the client — only quantity/rate/discount/tax
-// code come in; taxableAmount, taxAmount, lineTotal are recomputed here from
-// scratch every time, draft create or draft update alike (§6 validation layers).
-async function resolveLines(tx, organizationId, lineInputs) {
-  if (!lineInputs || lineInputs.length === 0) {
-    throw businessRule('empty_invoice', 'An invoice needs at least one line');
-  }
-
-  const accountIds = [...new Set(lineInputs.map((l) => l.accountId))];
-  const taxCodeIds = [...new Set(lineInputs.filter((l) => l.taxCodeId).map((l) => l.taxCodeId))];
-
-  const [accounts, taxCodes] = await Promise.all([
-    tx.account.findMany({ where: { organizationId, id: { in: accountIds } } }),
-    taxCodeIds.length ? tx.taxCode.findMany({ where: { organizationId, id: { in: taxCodeIds } } }) : [],
-  ]);
-  const accountById = new Map(accounts.map((a) => [a.id, a]));
-  const taxCodeById = new Map(taxCodes.map((t) => [t.id, t]));
-
-  for (const line of lineInputs) {
-    // A valid UUID from another organisation must fail as 404, not 403 —
-    // revealing existence is itself a leak (§6 validation layers).
-    if (!accountById.has(line.accountId)) throw notFound(`Account ${line.accountId} not found`);
-    if (line.taxCodeId && !taxCodeById.has(line.taxCodeId)) throw notFound(`Tax code ${line.taxCodeId} not found`);
-  }
-
-  return lineInputs.map((input, i) => {
-    const taxCode = input.taxCodeId ? taxCodeById.get(input.taxCodeId) : null;
-    const computed = computeLine({
-      quantity: input.quantity,
-      unitPrice: input.unitPrice,
-      discountPct: input.discountPct ?? 0,
-      taxRate: taxCode?.rate ?? 0,
-    });
-
-    return {
-      lineNo: i + 1,
-      description: input.description,
-      accountId: input.accountId,
-      quantity: dec(input.quantity),
-      unitPrice: dec(input.unitPrice),
-      discountPct: dec(input.discountPct ?? 0),
-      taxCodeId: input.taxCodeId ?? null,
-      ...computed,
-    };
-  });
 }
 
 // Live totals for the invoice editor — same recomputation as create/update,

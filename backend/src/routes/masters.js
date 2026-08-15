@@ -6,6 +6,7 @@ import { resolveTenant } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
 import { createPartySchemas } from '../../../shared/party-schema.js';
 import { serializeTaxCode } from './day3-contracts.js';
+import { notFound } from '../lib/accounting/errors.js';
 
 const router = Router();
 
@@ -209,6 +210,46 @@ router.get('/periods', authorize('report.view'), async (req, res, next) => {
       endDate: asDate(p.endDate),
       isOpen: p.isOpen,
     })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+const updatePeriodSchema = z.object({ isOpen: z.boolean() }).strict();
+
+// Closing the books is an organizational control, not an accounting action
+// — org.manage (Owner-only), same tier as the rest of this file's org-level
+// settings. AccountingPeriod has no organizationId column (§ period model),
+// so ownership is verified through fiscalYear.organizationId first, same as
+// GET /periods above.
+router.patch('/periods/:id', authorize('org.manage'), async (req, res, next) => {
+  try {
+    const id = z.string().uuid().parse(req.params.id);
+    const { isOpen } = updatePeriodSchema.parse(req.body);
+
+    const existing = await prisma.accountingPeriod.findFirst({
+      where: { id, fiscalYear: { organizationId: req.organizationId } },
+    });
+    if (!existing) throw notFound('Accounting period not found');
+
+    const period = await prisma.accountingPeriod.update({ where: { id }, data: { isOpen } });
+
+    req.auditEntry = {
+      action: isOpen ? 'period.unlocked' : 'period.locked',
+      entityType: 'AccountingPeriod',
+      entityId: period.id,
+      before: { isOpen: existing.isOpen },
+      after: { isOpen: period.isOpen },
+    };
+
+    res.json({
+      id: period.id,
+      fiscalYearId: period.fiscalYearId,
+      label: period.label,
+      startDate: asDate(period.startDate),
+      endDate: asDate(period.endDate),
+      isOpen: period.isOpen,
+    });
   } catch (err) {
     next(err);
   }

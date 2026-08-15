@@ -4,6 +4,7 @@ const TENANT_SCOPED_MODELS = new Set([
   'Membership', 'FiscalYear', 'Account', 'TaxCode',
   'JournalEntry', 'AuditLog', 'IdempotencyKey', 'Party',
   'Document', 'DocumentSeries', 'JournalLine', 'EntrySeries',
+  'PaymentAllocation',
 ]);
 
 const SINGLE_RECORD_READS = ['findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'update', 'delete'];

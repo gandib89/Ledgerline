@@ -55,6 +55,7 @@ model Organization {
   documents       Document[]
   documentSeries  DocumentSeries[]
   entrySeries     EntrySeries[]
+  paymentAllocations PaymentAllocation[]
 }
 
 model Membership {
@@ -239,6 +240,7 @@ model JournalEntry {
   description    String?
   status         EntryStatus @default(DRAFT)
   sourceId       String?
+  reversalOfId   String?
   postedAt       DateTime?
   postedById     String?
   createdAt      DateTime    @default(now())
@@ -247,6 +249,8 @@ model JournalEntry {
   period       AccountingPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
   lines        JournalLine[]
   sourceDocument Document?
+  reversalOf   JournalEntry?  @relation("EntryReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals    JournalEntry[] @relation("EntryReversal")
 
   @@unique([organizationId, entryNumber])
   @@index([organizationId, entryDate, status])
@@ -374,10 +378,32 @@ model Document {
   corrections    Document[]     @relation("DocumentCorrection")
   journalEntry   JournalEntry?  @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
   lines          DocumentLine[]
+  allocationsAsPayment PaymentAllocation[] @relation("AllocationPaymentDocument")
+  allocationsAsTarget  PaymentAllocation[] @relation("AllocationTargetDocument")
 
   @@unique([organizationId, docType, fiscalYearId, docNo])
   @@index([organizationId, docType, docDate])
   @@index([organizationId, partyId])
+}
+
+// A receipt (paymentDocument) applied against one or more open invoices
+// (targetDocument) — many-to-many, partial (§5 payment_allocations). One
+// receipt settling three invoices, or three receipts settling one.
+model PaymentAllocation {
+  id                String   @id @default(uuid())
+  organizationId    String
+  paymentDocumentId String
+  targetDocumentId  String
+  amount            Decimal  @db.Decimal(18, 4)
+  allocatedAt       DateTime @default(now())
+  createdById       String?
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  paymentDocument Document     @relation("AllocationPaymentDocument", fields: [paymentDocumentId], references: [id], onDelete: Restrict)
+  targetDocument  Document     @relation("AllocationTargetDocument", fields: [targetDocumentId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentDocumentId, targetDocumentId])
+  @@index([organizationId, targetDocumentId])
 }
 
 model DocumentLine {

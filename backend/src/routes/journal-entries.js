@@ -5,7 +5,9 @@ import { authenticate } from '../middleware/authenticate.js';
 import { resolveTenant } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
 import { postManualEntry } from '../lib/accounting/post-manual-entry.js';
+import { reverseEntry } from '../lib/accounting/reverse-entry.js';
 import { notFound } from '../lib/accounting/errors.js';
+import { writeAuditLog } from '../lib/audit/audit-log.js';
 
 const router = Router();
 
@@ -36,6 +38,7 @@ export function serializeJournalEntry(entry) {
     description: entry.description,
     status: entry.status.toLowerCase(),
     sourceId: entry.sourceId,
+    reversalOfId: entry.reversalOfId,
     postedAt: entry.postedAt,
     lines: entry.lines ? entry.lines.map(serializeJournalLine) : undefined,
   };
@@ -97,6 +100,51 @@ router.get('/journal-entries/:id', authorize('report.view'), async (req, res, ne
     const entry = await prisma.journalEntry.findFirst({ where: { id }, include: { lines: true } });
     if (!entry) throw notFound('Journal entry not found');
     res.json(serializeJournalEntry(entry));
+  } catch (err) {
+    next(err);
+  }
+});
+
+const reverseEntrySchema = z.object({
+  reason: z.string().min(1),
+  reversalDate: z.string().regex(DATE_RE).optional(),
+}).strict();
+
+// Same permission tier as posting a manual JV — reversal is a manual-sourced
+// entry, and this matches postManualEntry's single route-level check rather
+// than double-checking inside the service (§ reverseEntry design note).
+router.post('/journal-entries/:id/reverse', authorize('journal.post'), async (req, res, next) => {
+  try {
+    const id = z.string().uuid().parse(req.params.id);
+    const input = reverseEntrySchema.parse(req.body);
+    const actor = { userId: req.userId, organizationId: req.organizationId, roleId: req.roleId };
+
+    const { original, reversal } = await reverseEntry(id, input, actor);
+    // reverseEntry's `original` comes back from a raw $queryRaw lock (plain
+    // pg row, not Prisma-typed Date/Decimal instances) — re-fetch through
+    // the ORM for serialization, same as every other route in this file.
+    const originalFull = await prisma.journalEntry.findUniqueOrThrow({ where: { id: original.id }, include: { lines: true } });
+
+    // One request produces two logically distinct audit-worthy state
+    // changes (a new entry created, and the original's status flipped) — the
+    // single req.auditEntry convention every other route uses only covers
+    // one, so this writes both directly, after the transaction commits,
+    // same as every other audit write in this codebase.
+    await writeAuditLog({
+      organizationId: req.organizationId, userId: req.userId, requestId: req.id, ipAddress: req.ip,
+      action: 'journal_entry.reversal_posted', entityType: 'JournalEntry', entityId: reversal.id,
+      before: null, after: { entryNumber: reversal.entryNumber, reversalOfId: original.id },
+    });
+    await writeAuditLog({
+      organizationId: req.organizationId, userId: req.userId, requestId: req.id, ipAddress: req.ip,
+      action: 'journal_entry.marked_reversed', entityType: 'JournalEntry', entityId: original.id,
+      before: { status: 'posted' }, after: { status: 'reversed', reversalEntryId: reversal.id },
+    });
+
+    res.json({
+      original: serializeJournalEntry(originalFull),
+      reversal: serializeJournalEntry(reversal),
+    });
   } catch (err) {
     next(err);
   }

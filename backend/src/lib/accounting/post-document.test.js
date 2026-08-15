@@ -251,4 +251,28 @@ describe('postDocument — invoice', () => {
     const entrySeqB = Number(entryB.entryNumber.split('-').pop());
     expect(entrySeqB).toBe(entrySeqA + 1);
   });
+
+  // CONC-2: locked-counter numbering (document-numbering.js) must serialize
+  // concurrent posts rather than race on MAX(doc_no)+1 — Day 4 test of
+  // Day 3 infra, scheduled here because that's when the plan calls for it.
+  it('assigns 10 distinct, gapless doc numbers under concurrent posting (CONC-2)', async () => {
+    const drafts = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        makeDraftInvoice({
+          docDate: new Date('2025-07-27'),
+          lineInputs: [{ quantity: 1, unitPrice: `${100 + i}.00`, discountPct: 0, taxRate: '0.13' }],
+        })
+      )
+    );
+
+    await Promise.all(drafts.map((doc) => postDocument(doc.id, actor)));
+
+    const posted = await prisma.document.findMany({ where: { id: { in: drafts.map((d) => d.id) } } });
+    const seqs = posted.map((d) => Number(d.docNo.split('-').pop())).sort((a, b) => a - b);
+
+    expect(new Set(seqs).size).toBe(10); // no duplicates
+    for (let i = 1; i < seqs.length; i++) {
+      expect(seqs[i]).toBe(seqs[i - 1] + 1); // no gaps
+    }
+  });
 });

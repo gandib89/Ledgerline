@@ -9,6 +9,13 @@ export async function runIdempotent({ key, endpoint, requestBody }, performWrite
   const requestHash = hashBody(requestBody);
 
   return prisma.$transaction(async (tx) => {
+    // A failed statement aborts the whole Postgres transaction — catching
+    // the P2002 in JS and continuing to query on the same `tx` would just
+    // fail again with "current transaction is aborted". A savepoint around
+    // the risky insert lets a conflict roll back to a clean point without
+    // losing the transaction the idempotency key must share with the write.
+    await tx.$executeRaw`SAVEPOINT idempotency_insert`;
+
     let created;
     try {
       created = await tx.idempotencyKey.create({
@@ -16,6 +23,7 @@ export async function runIdempotent({ key, endpoint, requestBody }, performWrite
       });
     } catch (err) {
       if (err.code !== 'P2002') throw err;
+      await tx.$executeRaw`ROLLBACK TO SAVEPOINT idempotency_insert`;
 
       const existing = await tx.idempotencyKey.findFirst({ where: { key } });
 

@@ -10,6 +10,8 @@ import mastersRouter from './routes/masters.js';
 import invoicesRouter from './routes/invoices.js';
 import journalEntriesRouter from './routes/journal-entries.js';
 import reportsRouter from './routes/reports.js';
+import receiptsRouter from './routes/receipts.js';
+import creditNotesRouter from './routes/credit-notes.js';
 import { auditLog } from './middleware/audit-log.js';
 
 // The app is built here but never listens — index.js starts the server, tests
@@ -39,6 +41,8 @@ app.use('/api/v1', mastersRouter);
 app.use('/api/v1', invoicesRouter);
 app.use('/api/v1', journalEntriesRouter);
 app.use('/api/v1', reportsRouter);
+app.use('/api/v1', receiptsRouter);
+app.use('/api/v1', creditNotesRouter);
 
 // Express identifies error handlers by arity — the 4th param must exist even
 // though it is unused here.

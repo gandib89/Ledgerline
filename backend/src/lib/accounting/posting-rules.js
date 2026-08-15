@@ -64,4 +64,50 @@ function manual(document) {
   }));
 }
 
-export const POSTING_RULES = { invoice, manual };
+// Dr Bank/Cash (amount) / Cr AR (amount, carries partyId) — §6 posting rule
+// table. Receipts have no per-line tax; the whole thing is one amount.
+//
+// Expected shape: { depositAccountId, arAccountId, partyId, amount }
+function receipt(document) {
+  const lines = [
+    line({ accountId: document.depositAccountId, debit: document.amount, description: 'Customer receipt' }),
+    line({ accountId: document.arAccountId, credit: document.amount, partyId: document.partyId, description: 'Accounts Receivable' }),
+  ];
+  return lines.map((l, i) => ({ ...l, lineNumber: i + 1 }));
+}
+
+// Mirror image of invoice(): revenue and VAT move to the debit side, AR
+// moves to the credit side (§6 posting rule table — "Credit note: Debit
+// Sales Revenue (taxable); VAT Payable (tax) / Credit Accounts Receivable").
+//
+// Expected shape: same as invoice() — { partyId, grandTotal, arAccountId,
+// lines: [{ accountId, taxableAmount, taxAmount, taxAccountId, description }] }
+function creditNote(document) {
+  const lines = [];
+
+  for (const docLine of document.lines) {
+    lines.push(line({ accountId: docLine.accountId, debit: docLine.taxableAmount, description: docLine.description }));
+  }
+
+  const taxByAccount = new Map();
+  for (const docLine of document.lines) {
+    if (!docLine.taxAccountId || isZero(docLine.taxAmount)) continue;
+    taxByAccount.set(docLine.taxAccountId, add(taxByAccount.get(docLine.taxAccountId) ?? 0, docLine.taxAmount));
+  }
+  for (const [taxAccountId, taxAmount] of taxByAccount) {
+    lines.push(line({ accountId: taxAccountId, debit: taxAmount, description: 'VAT Payable (Output) reversal' }));
+  }
+
+  lines.push(
+    line({
+      accountId: document.arAccountId,
+      credit: document.grandTotal,
+      partyId: document.partyId,
+      description: 'Accounts Receivable',
+    })
+  );
+
+  return lines.map((l, i) => ({ ...l, lineNumber: i + 1 }));
+}
+
+export const POSTING_RULES = { invoice, manual, receipt, creditNote };
