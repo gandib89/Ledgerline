@@ -6,11 +6,14 @@ import { notFound, conflict, businessRule, forbidden, internal } from './errors.
 import { AR_ACCOUNT_CODE } from './chart-of-accounts.js';
 import { add, eq, dec } from '../money.js';
 
-// Only invoice is wired today (Day 3 scope) — credit_note/receipt/bill/
-// supplier_payment get their own posting rules and permission codes on the
-// days that build them (§6 posting rule table).
+// credit_note/receipt/bill/supplier_payment have their own posting rules and
+// permission codes on the days that build them (§6 posting rule table) and
+// don't route through here — BANK_ADJUSTMENT is the one other type wired
+// in, since §7's "create an entry from the line" explicitly posts through
+// this same engine.
 const DOC_TYPE_RULES = {
   INVOICE: { rulesKey: 'invoice', prefix: 'INV', permission: 'invoice.post', label: 'Sales Invoice' },
+  BANK_ADJUSTMENT: { rulesKey: 'bankAdjustment', prefix: 'BADJ', permission: 'bank.reconcile', label: 'Bank Adjustment' },
 };
 
 async function assertPermission(tx, actor, permissionCode) {
@@ -24,9 +27,14 @@ async function assertPermission(tx, actor, permissionCode) {
 // second code path writes to JournalEntry (§6). actor = { userId,
 // organizationId, roleId }. Side effects (audit log, cache bust) are the
 // caller's job, run after this resolves — never inside the transaction.
-export async function postDocument(documentId, actor) {
-  return prisma.$transaction(
-    async (tx) => {
+//
+// Same optional-tx pattern as postReceipt (§6 receipt-service.js): called
+// bare, it opens its own transaction like every invoice post does today.
+// Called with an already-open tx — the reconciliation workspace's "create
+// entry from line" needs the draft, the post, and the statement-line match
+// to commit or roll back together — it joins that transaction instead.
+export async function postDocument(documentId, actor, tx = prisma) {
+  const run = async (tx) => {
       // 1. Lock the document. Prevents double-posting under concurrent requests.
       const [doc] = await tx.$queryRaw`
       SELECT * FROM "Document"
@@ -76,23 +84,34 @@ export async function postDocument(documentId, actor) {
         orderBy: { lineNo: 'asc' },
       });
 
-      const arAccount = await tx.account.findFirst({
-        where: { organizationId: actor.organizationId, code: AR_ACCOUNT_CODE },
-      });
-      if (!arAccount) throw internal(`Accounts Receivable account (${AR_ACCOUNT_CODE}) not found for this organization`);
+      let journalLines;
+      if (doc.docType === 'INVOICE') {
+        const arAccount = await tx.account.findFirst({
+          where: { organizationId: actor.organizationId, code: AR_ACCOUNT_CODE },
+        });
+        if (!arAccount) throw internal(`Accounts Receivable account (${AR_ACCOUNT_CODE}) not found for this organization`);
 
-      const journalLines = POSTING_RULES.invoice({
-        partyId: doc.partyId,
-        arAccountId: arAccount.id,
-        grandTotal: dec(doc.grandTotal),
-        lines: docLines.map((l) => ({
-          accountId: l.accountId,
-          taxableAmount: l.taxableAmount,
-          taxAmount: l.taxAmount,
-          taxAccountId: l.taxCode?.outputAccountId ?? null,
-          description: l.description,
-        })),
-      });
+        journalLines = POSTING_RULES.invoice({
+          partyId: doc.partyId,
+          arAccountId: arAccount.id,
+          grandTotal: dec(doc.grandTotal),
+          lines: docLines.map((l) => ({
+            accountId: l.accountId,
+            taxableAmount: l.taxableAmount,
+            taxAmount: l.taxAmount,
+            taxAccountId: l.taxCode?.outputAccountId ?? null,
+            description: l.description,
+          })),
+        });
+      } else if (doc.docType === 'BANK_ADJUSTMENT') {
+        // No AR line, no party, no tax — a plain debit/credit pair straight
+        // off the document lines (§7 resolution path 2).
+        journalLines = POSTING_RULES.bankAdjustment({
+          lines: docLines.map((l) => ({ accountId: l.accountId, debit: l.debit, credit: l.credit, description: l.description })),
+        });
+      } else {
+        throw internal(`No journal-line builder wired for document type ${doc.docType}`);
+      }
 
       // 5. Assert balance in application code too — fail fast with a good
       //    message rather than a raw Postgres exception at COMMIT.
@@ -144,7 +163,7 @@ export async function postDocument(documentId, actor) {
       });
 
       return entry;
-    },
-    { isolationLevel: 'ReadCommitted' }
-  );
+  };
+
+  return tx === prisma ? prisma.$transaction(run, { isolationLevel: 'ReadCommitted' }) : run(tx);
 }

@@ -12,6 +12,7 @@ import journalEntriesRouter from './routes/journal-entries.js';
 import reportsRouter from './routes/reports.js';
 import receiptsRouter from './routes/receipts.js';
 import creditNotesRouter from './routes/credit-notes.js';
+import bankingRouter from './routes/banking.js';
 import { auditLog } from './middleware/audit-log.js';
 
 // The app is built here but never listens — index.js starts the server, tests
@@ -29,7 +30,10 @@ app.use((req, res, next) => {
 app.use(auditLog);
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+// §9 security checklist: 1 MB body cap. The bank-statement CSV upload has
+// its own separate 2 MB cap via multer (banking.js) since it's multipart,
+// not JSON, and doesn't pass through this middleware at all.
+app.use(express.json({ limit: '1mb' }));
 
 app.get('/healthz', (req, res) => {
   res.status(200).json({ status: 'ok' });
@@ -43,6 +47,7 @@ app.use('/api/v1', journalEntriesRouter);
 app.use('/api/v1', reportsRouter);
 app.use('/api/v1', receiptsRouter);
 app.use('/api/v1', creditNotesRouter);
+app.use('/api/v1', bankingRouter);
 
 // Express identifies error handlers by arity — the 4th param must exist even
 // though it is unused here.

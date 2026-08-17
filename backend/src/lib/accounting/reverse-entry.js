@@ -30,6 +30,24 @@ export async function reverseEntry(entryId, { reason, reversalDate }, actor) {
       orderBy: { lineNumber: 'asc' },
     });
 
+    // RECON-8 / §7 edge cases: a line whose journal entry is reversed must
+    // return to 'unmatched' so the reconciliation workspace picks it up
+    // again — unless the reconciliation that consumed it has already
+    // completed, in which case the DB CHECK on Reconciliation.difference
+    // would be violated the moment matched lines flip; block first instead.
+    const matchedStatementLines = await tx.bankStatementLine.findMany({
+      where: { matchedJournalLineId: { in: originalLines.map((l) => l.id) } },
+    });
+    if (matchedStatementLines.some((l) => l.status === 'RECONCILED')) {
+      throw businessRule('reconciled_period', 'Journal entry has a reconciled bank statement line and cannot be reversed');
+    }
+    for (const line of matchedStatementLines) {
+      await tx.bankStatementLine.update({
+        where: { id: line.id },
+        data: { status: 'UNMATCHED', matchedJournalLineId: null, matchConfidence: null, matchedBy: null, matchedAt: null },
+      });
+    }
+
     // Mechanical debit<->credit swap, not a POSTING_RULES entry — this isn't
     // a rule keyed by document type, it's the same transform for every entry.
     const swappedLines = originalLines.map((l) => ({
@@ -133,6 +151,15 @@ async function cascadeReversal(tx, actor, documentType, doc) {
         },
       });
     }
+    return tx.document.update({ where: { id: doc.id }, data: { status: 'REVERSED', version: { increment: 1 } } });
+  }
+
+  // A "create entry from line" bank adjustment (§7 resolution path 2) — no
+  // allocation, no party ledger to unwind, just the status flip so the
+  // source document doesn't stay stuck at POSTED once its entry is reversed.
+  // The matched statement line itself is unmatched earlier in reverseEntry,
+  // independent of documentType.
+  if (documentType === 'bankAdjustment') {
     return tx.document.update({ where: { id: doc.id }, data: { status: 'REVERSED', version: { increment: 1 } } });
   }
 

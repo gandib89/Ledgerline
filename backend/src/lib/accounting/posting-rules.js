@@ -110,4 +110,19 @@ function creditNote(document) {
   return lines.map((l, i) => ({ ...l, lineNumber: i + 1 }));
 }
 
-export const POSTING_RULES = { invoice, manual, receipt, creditNote };
+// A bank-charge/interest line discovered during reconciliation (§7 resolution
+// path 2) — two plain debit/credit lines, same shape as manual(), but its
+// own rule name because it flows through postDocument() (a real Document +
+// DocumentLine pair), not postManualEntry()'s document-less path.
+function bankAdjustment(document) {
+  return document.lines.map((docLine, i) => ({
+    accountId: docLine.accountId,
+    debit: dec(docLine.debit ?? 0),
+    credit: dec(docLine.credit ?? 0),
+    partyId: null,
+    description: docLine.description,
+    lineNumber: i + 1,
+  }));
+}
+
+export const POSTING_RULES = { invoice, manual, receipt, creditNote, bankAdjustment };

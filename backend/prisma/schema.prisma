@@ -56,6 +56,10 @@ model Organization {
   documentSeries  DocumentSeries[]
   entrySeries     EntrySeries[]
   paymentAllocations PaymentAllocation[]
+  bankAccounts       BankAccount[]
+  bankStatements     BankStatement[]
+  bankStatementLines BankStatementLine[]
+  reconciliations    Reconciliation[]
 }
 
 model Membership {
@@ -142,6 +146,7 @@ enum DocType {
   RECEIPT
   BILL
   SUPPLIER_PAYMENT
+  BANK_ADJUSTMENT
 }
 
 enum DocStatus {
@@ -174,6 +179,7 @@ model Account {
   documentLines DocumentLine[]
   taxCodesAsOutput TaxCode[] @relation("TaxCodeOutputAccount")
   taxCodesAsInput  TaxCode[] @relation("TaxCodeInputAccount")
+  bankAccounts     BankAccount[]
 
   @@unique([organizationId, code])
   @@index([organizationId, type])
@@ -271,6 +277,7 @@ model JournalLine {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   account      Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
   party        Party?       @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  matchedStatementLine BankStatementLine?
 
   @@index([journalEntryId])
   @@index([organizationId, accountId])
@@ -406,6 +413,114 @@ model PaymentAllocation {
   @@index([organizationId, targetDocumentId])
 }
 
+enum BankStatementLineStatus {
+  UNMATCHED
+  SUGGESTED
+  MATCHED
+  RECONCILED
+  IGNORED
+}
+
+enum MatchedBy {
+  AUTO
+  MANUAL
+}
+
+enum ReconciliationStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+model BankAccount {
+  id               String  @id @default(uuid())
+  organizationId   String
+  accountId        String
+  bankName         String
+  accountNoMasked  String
+  openingBalance   Decimal @default(0) @db.Decimal(18, 4)
+  isActive         Boolean @default(true)
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  account        Account         @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  statements     BankStatement[]
+  statementLines BankStatementLine[]
+  reconciliations Reconciliation[]
+
+  @@unique([organizationId, accountId])
+}
+
+model BankStatement {
+  id             String   @id @default(uuid())
+  organizationId String
+  bankAccountId  String
+  fileName       String
+  fileSha256     String
+  periodStart    DateTime @db.Date
+  periodEnd      DateTime @db.Date
+  openingBalance Decimal  @db.Decimal(18, 4)
+  closingBalance Decimal  @db.Decimal(18, 4)
+  lineCount      Int
+  importedById   String?
+  importedAt     DateTime @default(now())
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  bankAccount  BankAccount         @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  lines        BankStatementLine[]
+  reconciliations Reconciliation[]
+
+  @@unique([bankAccountId, fileSha256])
+}
+
+// bankAccountId is denormalised from statement.bankAccountId so the matching
+// engine's candidate pool and the reconciliation workspace can filter/index
+// by (organizationId, bankAccountId, status) without a join (§7 index list).
+model BankStatementLine {
+  id                   String                  @id @default(uuid())
+  organizationId       String
+  statementId          String
+  bankAccountId        String
+  txnDate              DateTime                @db.Date
+  description          String
+  reference             String?
+  debit                Decimal                 @default(0) @db.Decimal(18, 4)
+  credit                Decimal                 @default(0) @db.Decimal(18, 4)
+  runningBalance        Decimal?                @db.Decimal(18, 4)
+  rowHash               String
+  status                BankStatementLineStatus @default(UNMATCHED)
+  matchedJournalLineId   String?                 @unique
+  matchConfidence        Decimal?                @db.Decimal(4, 3)
+  matchedBy              MatchedBy?
+  matchedAt               DateTime?
+  ignoreReason           String?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  statement    BankStatement @relation(fields: [statementId], references: [id], onDelete: Restrict)
+  bankAccount  BankAccount   @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  matchedJournalLine JournalLine? @relation(fields: [matchedJournalLineId], references: [id], onDelete: Restrict)
+
+  @@unique([statementId, rowHash])
+  @@index([organizationId, bankAccountId, status])
+}
+
+model Reconciliation {
+  id                String               @id @default(uuid())
+  organizationId    String
+  bankAccountId     String
+  asOfDate          DateTime             @db.Date
+  statementId       String
+  bookBalance       Decimal              @db.Decimal(18, 4)
+  bankBalance       Decimal              @db.Decimal(18, 4)
+  difference        Decimal              @db.Decimal(18, 4)
+  unreconciledCount Int
+  status            ReconciliationStatus @default(IN_PROGRESS)
+  completedById     String?
+  completedAt       DateTime?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  bankAccount  BankAccount   @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  statement    BankStatement @relation(fields: [statementId], references: [id], onDelete: Restrict)
+}
+
 model DocumentLine {
   id            String  @id @default(uuid())
   documentId    String
@@ -419,6 +534,13 @@ model DocumentLine {
   taxCodeId     String?
   taxAmount     Decimal @default(0) @db.Decimal(18, 4)
   lineTotal     Decimal @db.Decimal(18, 4)
+  // Only BANK_ADJUSTMENT documents use these — a plain debit/credit journal
+  // line has no quantity/rate/tax shape. Nullable so every sale-line-shaped
+  // doc type (invoice, credit note) is untouched; quantity/unitPrice/
+  // taxableAmount/lineTotal above still get harmless placeholder values for
+  // those rows since this table's NOT NULL columns aren't loosened.
+  debit         Decimal? @db.Decimal(18, 4)
+  credit        Decimal? @db.Decimal(18, 4)
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   account  Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)

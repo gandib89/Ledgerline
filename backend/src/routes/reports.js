@@ -6,6 +6,8 @@ import { resolveTenant } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
 import { notFound } from '../lib/accounting/errors.js';
 import { AR_ACCOUNT_CODE } from '../lib/accounting/chart-of-accounts.js';
+import { findFiscalYearForDate } from '../lib/accounting/fiscal-year.js';
+import { computeBookBalance } from '../lib/banking/reconciliation-service.js';
 import { dec, add, sub, eq, isZero } from '../lib/money.js';
 
 const router = Router();
@@ -232,6 +234,183 @@ router.get('/reports/general-ledger', authorize('report.view'), async (req, res,
       openingBalance: openingBalance.toFixed(2),
       lines,
       closingBalance: balance.toFixed(2),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Shared by /reports/profit-loss and the Current Year Earnings line of
+// /reports/balance-sheet (§8.4) — REVENUE credits-positive, EXPENSE
+// debits-positive, over a date range (a *period* report, unlike the
+// point-in-time balance sheet — §8.3's distinction).
+async function computeProfitAndLoss(organizationId, from, to) {
+  const rows = await prisma.$queryRaw`
+    SELECT a.code, a.name, a.type, SUM(jl.debit) AS total_debit, SUM(jl.credit) AS total_credit
+    FROM "JournalLine" jl
+    JOIN "JournalEntry" je ON je.id = jl."journalEntryId"
+    JOIN "Account" a       ON a.id = jl."accountId"
+    WHERE jl."organizationId" = ${organizationId}
+      AND je.status IN ('POSTED', 'REVERSED')
+      AND a.type IN ('REVENUE', 'EXPENSE')
+      AND je."entryDate" BETWEEN ${from}::date AND ${to}::date
+    GROUP BY a.id, a.code, a.name, a.type
+    HAVING SUM(jl.debit) <> 0 OR SUM(jl.credit) <> 0
+    ORDER BY a.code
+  `;
+
+  const revenue = [];
+  const expense = [];
+  let revenueTotal = dec(0);
+  let expenseTotal = dec(0);
+
+  for (const r of rows) {
+    const debit = dec(r.total_debit);
+    const credit = dec(r.total_credit);
+    if (r.type === 'REVENUE') {
+      const amount = sub(credit, debit);
+      revenueTotal = add(revenueTotal, amount);
+      revenue.push({ code: r.code, name: r.name, amount: amount.toFixed(2) });
+    } else {
+      const amount = sub(debit, credit);
+      expenseTotal = add(expenseTotal, amount);
+      expense.push({ code: r.code, name: r.name, amount: amount.toFixed(2) });
+    }
+  }
+
+  return { revenue, revenueTotal, expense, expenseTotal, netProfit: sub(revenueTotal, expenseTotal) };
+}
+
+router.get('/reports/profit-loss', authorize('report.view'), async (req, res, next) => {
+  try {
+    const query = z.object({ from: z.string().regex(DATE_RE).optional(), to: z.string().regex(DATE_RE).optional() }).parse(req.query);
+    const to = query.to ?? new Date().toISOString().slice(0, 10);
+    const from = query.from ?? (await findFiscalYearForDate(prisma, req.organizationId, new Date(to))).startDate.toISOString().slice(0, 10);
+
+    const { revenue, revenueTotal, expense, expenseTotal, netProfit } = await computeProfitAndLoss(req.organizationId, from, to);
+
+    res.json({
+      from, to,
+      revenue, revenueTotal: revenueTotal.toFixed(2),
+      expense, expenseTotal: expenseTotal.toFixed(2),
+      netProfit: netProfit.toFixed(2),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// The critical mechanic (§8.4): Current Year Earnings is never a stored
+// balance, it's Σ(income) − Σ(expense) for the fiscal year to the report
+// date, computed at render — without it assets would exceed liabilities +
+// equity by exactly the net profit and the sheet would not balance.
+router.get('/reports/balance-sheet', authorize('report.view'), async (req, res, next) => {
+  try {
+    const query = z.object({ asOf: z.string().regex(DATE_RE).optional() }).parse(req.query);
+    const asOf = query.asOf ?? new Date().toISOString().slice(0, 10);
+
+    const rows = await prisma.$queryRaw`
+      SELECT a.code, a.name, a.type, SUM(jl.debit) AS total_debit, SUM(jl.credit) AS total_credit
+      FROM "JournalLine" jl
+      JOIN "JournalEntry" je ON je.id = jl."journalEntryId"
+      JOIN "Account" a       ON a.id = jl."accountId"
+      WHERE jl."organizationId" = ${req.organizationId}
+        AND je.status IN ('POSTED', 'REVERSED')
+        AND a.type IN ('ASSET', 'LIABILITY', 'EQUITY')
+        AND je."entryDate" <= ${asOf}::date
+      GROUP BY a.id, a.code, a.name, a.type
+      HAVING SUM(jl.debit) <> 0 OR SUM(jl.credit) <> 0
+      ORDER BY a.code
+    `;
+
+    const assets = [];
+    const liabilities = [];
+    const equity = [];
+    let totalAssets = dec(0);
+    let totalLiabilities = dec(0);
+    let totalEquity = dec(0);
+
+    for (const r of rows) {
+      const debit = dec(r.total_debit);
+      const credit = dec(r.total_credit);
+      if (r.type === 'ASSET') {
+        const amount = sub(debit, credit);
+        totalAssets = add(totalAssets, amount);
+        assets.push({ code: r.code, name: r.name, amount: amount.toFixed(2) });
+      } else if (r.type === 'LIABILITY') {
+        const amount = sub(credit, debit);
+        totalLiabilities = add(totalLiabilities, amount);
+        liabilities.push({ code: r.code, name: r.name, amount: amount.toFixed(2) });
+      } else {
+        const amount = sub(credit, debit);
+        totalEquity = add(totalEquity, amount);
+        equity.push({ code: r.code, name: r.name, amount: amount.toFixed(2) });
+      }
+    }
+
+    const fiscalYear = await findFiscalYearForDate(prisma, req.organizationId, new Date(asOf));
+    const { netProfit } = await computeProfitAndLoss(req.organizationId, fiscalYear.startDate.toISOString().slice(0, 10), asOf);
+    equity.push({ code: null, name: 'Current Year Earnings', amount: netProfit.toFixed(2) });
+    totalEquity = add(totalEquity, netProfit);
+
+    const difference = sub(totalAssets, add(totalLiabilities, totalEquity));
+
+    res.json({
+      asOf,
+      assets, liabilities, equity,
+      totals: { assets: totalAssets.toFixed(2), liabilities: totalLiabilities.toFixed(2), equity: totalEquity.toFixed(2) },
+      integrity: { balanced: isZero(difference), difference: difference.toFixed(2) },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Comes free with §7 — the same book/bank/difference the reconciliation
+// workspace's sticky footer shows, formatted the way accountants read it
+// (§8.6), computed live rather than only at the moment a Reconciliation row
+// is created or completed.
+router.get('/reports/bank-reconciliation', authorize('report.view'), async (req, res, next) => {
+  try {
+    const query = z.object({
+      bankAccountId: z.string().uuid(),
+      statementId: z.string().uuid().optional(),
+      asOf: z.string().regex(DATE_RE).optional(),
+    }).parse(req.query);
+
+    const bankAccount = await prisma.bankAccount.findFirst({ where: { id: query.bankAccountId, organizationId: req.organizationId } });
+    if (!bankAccount) throw notFound('Bank account not found');
+
+    const statement = query.statementId
+      ? await prisma.bankStatement.findFirst({ where: { id: query.statementId, organizationId: req.organizationId, bankAccountId: bankAccount.id } })
+      : await prisma.bankStatement.findFirst({ where: { organizationId: req.organizationId, bankAccountId: bankAccount.id }, orderBy: { importedAt: 'desc' } });
+    if (!statement) throw notFound('No statement imported for this bank account');
+
+    const asOf = query.asOf ?? statement.periodEnd.toISOString().slice(0, 10);
+
+    const bookBalance = await computeBookBalance(prisma, { organizationId: req.organizationId, glAccountId: bankAccount.accountId, asOfDate: asOf });
+    const bankBalance = dec(statement.closingBalance);
+    const difference = sub(bankBalance, bookBalance);
+
+    const lines = await prisma.bankStatementLine.findMany({ where: { statementId: statement.id } });
+    const counts = { autoMatched: 0, manualMatched: 0, suggested: 0, unmatched: 0, ignored: 0 };
+    for (const l of lines) {
+      if (['MATCHED', 'RECONCILED'].includes(l.status)) {
+        if (l.matchedBy === 'MANUAL') counts.manualMatched++; else counts.autoMatched++;
+      } else if (l.status === 'SUGGESTED') counts.suggested++;
+      else if (l.status === 'IGNORED') counts.ignored++;
+      else counts.unmatched++;
+    }
+
+    res.json({
+      asOf,
+      bankAccountId: bankAccount.id,
+      statementId: statement.id,
+      bankBalance: bankBalance.toFixed(2),
+      bookBalance: bookBalance.toFixed(2),
+      difference: difference.toFixed(2),
+      integrity: { balanced: isZero(difference) },
+      counts: { ...counts, matched: counts.autoMatched + counts.manualMatched, total: lines.length },
     });
   } catch (err) {
     next(err);

@@ -91,7 +91,7 @@ export async function postReceipt(actor, input, tx = prisma) {
 
     const outstandingOnReceipt = sub(amount, allocatedTotal);
 
-    const document = await tx.document.create({
+    const documentDraft = await tx.document.create({
       data: {
         organizationId: actor.organizationId, fiscalYearId: fiscalYear.id,
         docType: 'RECEIPT', docNo, docDate, partyId: party.id,
@@ -105,7 +105,7 @@ export async function postReceipt(actor, input, tx = prisma) {
       data: {
         organizationId: actor.organizationId, periodId: period.id, entryNumber,
         documentType: 'receipt', entryDate: docDate, description: `Customer Receipt ${docNo}`,
-        status: 'POSTED', sourceId: document.id, postedAt: new Date(), postedById: actor.userId,
+        status: 'POSTED', sourceId: documentDraft.id, postedAt: new Date(), postedById: actor.userId,
         lines: {
           create: journalLines.map((l) => ({
             organizationId: actor.organizationId, accountId: l.accountId, partyId: l.partyId,
@@ -114,6 +114,18 @@ export async function postReceipt(actor, input, tx = prisma) {
         },
       },
       include: { lines: true },
+    });
+
+    // postDocument()'s invoice/credit-note path links this back in the same
+    // create call; a receipt creates document and entry in the opposite
+    // order (create-and-post, no draft), so the link is a second write.
+    // Without it, every join from JournalEntry back to its source Document
+    // — the general ledger's "click a number, land on the source doc" and
+    // the bank matcher's doc_no/party-name reference pass (§7/§8.2) — misses
+    // every receipt.
+    const document = await tx.document.update({
+      where: { id: documentDraft.id },
+      data: { journalEntryId: journalEntry.id },
     });
 
     const allocations = [];

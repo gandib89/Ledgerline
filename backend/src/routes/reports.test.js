@@ -104,6 +104,46 @@ describe('GET /reports/general-ledger', () => {
   });
 });
 
+describe('GET /reports/profit-loss', () => {
+  it('computes revenue credits-positive and expense debits-positive over a period', async () => {
+    const expenseAccount = await prisma.account.create({ data: { organizationId: owner.orgId, code: '5900', name: 'Misc Expense', type: 'EXPENSE' } });
+    const bankAccount = await prisma.account.findFirstOrThrow({ where: { organizationId: owner.orgId, code: '1020' } });
+
+    await postInvoice('2025-11-01', 50000);
+    const jvRes = await request(app).post('/api/v1/journal-entries').set(owner.headers).send({
+      entryDate: '2025-11-02', narration: 'Office supplies',
+      lines: [
+        { accountId: expenseAccount.id, debit: 20000 },
+        { accountId: bankAccount.id, credit: 20000 },
+      ],
+    });
+    expect(jvRes.status).toBe(201);
+
+    const res = await request(app).get('/api/v1/reports/profit-loss').query({ from: '2025-11-01', to: '2025-11-02' }).set(owner.headers);
+    expect(res.status).toBe(200);
+    expect(res.body.revenueTotal).toBe('50000.00');
+    expect(res.body.expenseTotal).toBe('20000.00');
+    expect(res.body.netProfit).toBe('30000.00');
+  });
+});
+
+describe('GET /reports/balance-sheet', () => {
+  it('balances via the computed Current Year Earnings line (§8.4)', async () => {
+    // Deliberately not isolated to its own postings — the accounting
+    // equation must hold no matter what the rest of this file has already
+    // posted, since every entry above balanced by construction.
+    const res = await request(app).get('/api/v1/reports/balance-sheet').query({ asOf: '2025-11-05' }).set(owner.headers);
+    expect(res.status).toBe(200);
+    expect(res.body.integrity.balanced).toBe(true);
+    expect(res.body.integrity.difference).toBe('0.00');
+
+    const earningsLine = res.body.equity.find((e) => e.name === 'Current Year Earnings');
+    expect(earningsLine).toBeDefined();
+    const arLine = res.body.assets.find((a) => a.code === '1100');
+    expect(arLine).toBeDefined();
+  });
+});
+
 describe('PATCH /periods/:id + INV-10: period locking enforced by the database', () => {
   it('locking a period through the real endpoint blocks posting into it', async () => {
     const period = await prisma.accountingPeriod.findFirstOrThrow({ where: { fiscalYearId: fiscalYear.id, label: 'Bhadra' } });
