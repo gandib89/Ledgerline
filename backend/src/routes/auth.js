@@ -5,6 +5,8 @@ import { registerUser } from '../lib/auth/register.js';
 import { loginUser } from '../lib/auth/login.js';
 import { rotateRefreshToken, revokeFamily } from '../lib/auth/refresh-tokens.js';
 import { signAccessToken } from '../lib/auth/tokens.js';
+import { env } from '../env.js';
+import { authLimiter } from '../lib/rate-limit.js';
 
 const router = Router();
 
@@ -17,7 +19,7 @@ function getCookie(req, name) {
 
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: env.NODE_ENV === 'production',
   sameSite: 'strict',
   path: '/api/v1/auth',
   maxAge: 7 * 24 * 60 * 60 * 1000,
@@ -28,7 +30,7 @@ const registerSchema = z.object({
   password: z.string().min(8),
 }).strict();
 
-router.post('/register', async (req, res, next) => {
+router.post('/register', authLimiter, async (req, res, next) => {
   try {
     const { email, password } = registerSchema.parse(req.body);
     const { user, accessToken, refreshToken } = await registerUser(email, password);
@@ -45,7 +47,7 @@ const loginSchema = z.object({
   password: z.string(),
 }).strict();
 
-router.post('/login', async (req, res, next) => {
+router.post('/login', authLimiter, async (req, res, next) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
     const { user, accessToken, refreshToken } = await loginUser(email, password);

@@ -8,5 +8,10 @@ export default defineConfig({
     // Argon2id is deliberately slow (19MB, 2 passes); auth suites need headroom.
     testTimeout: 30000,
     hookTimeout: 60000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      exclude: ['src/generated/**', 'src/test/**', '**/*.test.js', 'prisma/**'],
+    },
   },
 });

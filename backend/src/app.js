@@ -1,9 +1,11 @@
-import 'dotenv/config';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import { randomUUID } from 'node:crypto';
 import { ZodError } from 'zod';
+import { env } from './env.js';
+import { globalLimiter } from './lib/rate-limit.js';
+import { safeErrorLog } from './lib/log-redact.js';
 import authRouter from './routes/auth.js';
 import orgsRouter from './routes/orgs.js';
 import mastersRouter from './routes/masters.js';
@@ -29,7 +31,20 @@ app.use((req, res, next) => {
 });
 app.use(auditLog);
 app.use(helmet());
-app.use(cors());
+
+// Allowlist, not `cors()` wide-open — required anyway since the refresh
+// token travels as a credentialed cookie, and CORS forbids `credentials:
+// true` paired with a wildcard origin.
+const allowedOrigins = env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean);
+app.use(cors({
+  origin(origin, callback) {
+    // No Origin header = same-origin, curl, server-to-server — allow.
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
+app.use(globalLimiter);
 // §9 security checklist: 1 MB body cap. The bank-statement CSV upload has
 // its own separate 2 MB cap via multer (banking.js) since it's multipart,
 // not JSON, and doesn't pass through this middleware at all.
@@ -52,7 +67,7 @@ app.use('/api/v1', bankingRouter);
 // Express identifies error handlers by arity — the 4th param must exist even
 // though it is unused here.
 app.use((err, req, res, _next) => {
-  console.error(`[${req.id}]`, err);
+  console.error(`[${req.id}]`, safeErrorLog(err));
 
   // Zod throws on any bad request body/query. That is a client error (400),
   // not a server fault — without this it would surface as a 500.

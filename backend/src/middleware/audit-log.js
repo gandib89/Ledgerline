@@ -1,4 +1,5 @@
 import { writeAuditLog } from '../lib/audit/audit-log.js';
+import { safeErrorLog } from '../lib/log-redact.js';
 
 export function auditLog(req, res, next) {
   res.on('finish', () => {
@@ -11,7 +12,7 @@ export function auditLog(req, res, next) {
       requestId: req.id,
       ipAddress: req.ip,
     }).catch((err) => {
-      console.error(`[${req.id}] audit log write failed`, err);
+      console.error(`[${req.id}] audit log write failed`, safeErrorLog(err));
     });
   });
   next();

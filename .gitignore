@@ -2,6 +2,8 @@ CLAUDE.md
 node_modules/
 .env
 .env.*
+!.env.example
 dist/
 build/
+coverage/
 *.log

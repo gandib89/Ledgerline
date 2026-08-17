@@ -9,9 +9,10 @@ import { AR_ACCOUNT_CODE } from '../lib/accounting/chart-of-accounts.js';
 import { findFiscalYearForDate } from '../lib/accounting/fiscal-year.js';
 import { computeBookBalance } from '../lib/banking/reconciliation-service.js';
 import { dec, add, sub, eq, isZero } from '../lib/money.js';
+import { reportLimiter } from '../lib/rate-limit.js';
 
 const router = Router();
-router.use(authenticate, resolveTenant);
+router.use(authenticate, resolveTenant, reportLimiter);
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 

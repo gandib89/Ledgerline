@@ -8,6 +8,7 @@ import { authorize } from '../middleware/authorize.js';
 import { notFound, businessRule } from '../lib/accounting/errors.js';
 import { runIdempotent } from '../lib/idempotency/run-idempotent.js';
 import { importStatement } from '../lib/banking/statement-import-service.js';
+import { csvImportLimiter } from '../lib/rate-limit.js';
 import { fileSha256 } from '../lib/banking/csv.js';
 import {
   manualMatchLine, createEntryFromLine, ignoreLine, createReconciliation, completeReconciliation,
@@ -153,7 +154,7 @@ function uploadStatementFile(req, res, next) {
 // and-braces on top of the file's own content-hash idempotency (RECON-2) —
 // it protects the in-flight request itself (e.g. a client retry after a
 // dropped response), the same reasoning as every other posting endpoint.
-router.post('/bank-accounts/:id/statements', authorize('bank.reconcile'), uploadStatementFile, async (req, res, next) => {
+router.post('/bank-accounts/:id/statements', authorize('bank.reconcile'), csvImportLimiter, uploadStatementFile, async (req, res, next) => {
   try {
     const bankAccountId = z.string().uuid().parse(req.params.id);
     if (!req.file) throw businessRule('missing_file', 'A CSV file is required (multipart field "file")');
