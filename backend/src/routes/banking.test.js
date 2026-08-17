@@ -174,6 +174,30 @@ describe('RECON-3: two identical amounts on the same day tie, so neither auto-ma
   });
 });
 
+describe('POST /lines/:id/reject', () => {
+  it('clears a suggested candidate, returns the line to unmatched, and audits the decision', async () => {
+    const { glAccount, bankAccountId } = await makeBankAccount();
+    await postReceipt(6100, '2026-01-14', glAccount.id);
+    const imported = await importCsv(bankAccountId, 'reject-suggestion.csv', [
+      { date: '2026-01-14', description: 'UNIDENTIFIED DEPOSIT', credit: '6100.00', balance: '6100.00' },
+    ]);
+    expect(imported.body.suggested).toBe(1);
+    const suggested = await prisma.bankStatementLine.findFirstOrThrow({
+      where: { statementId: imported.body.statement.id },
+    });
+    expect(suggested.matchedJournalLineId).not.toBeNull();
+
+    const response = await request(app).post(`/api/v1/lines/${suggested.id}/reject`).set(owner.headers).send();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ status: 'unmatched', matchedJournalLineId: null, matchConfidence: null });
+    const audit = await prisma.auditLog.findFirst({
+      where: { organizationId: owner.orgId, action: 'statementLine.suggestionRejected', entityId: suggested.id },
+    });
+    expect(audit).not.toBeNull();
+  });
+});
+
 describe('RECON-4: manual match', () => {
   it('sets matched_by=manual, confidence 1.0, and writes an audit row', async () => {
     const { glAccount, bankAccountId } = await makeBankAccount();

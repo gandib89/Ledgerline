@@ -42,7 +42,7 @@ describe('AppShell', () => {
 
     await waitFor(() => expect(getActiveOrganization()).toBe('org-sherpa'));
     expect(invalidate).toHaveBeenCalledWith();
-    expect(await screen.findByText('NPR 812,340.00')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Financial overview' })).toBeInTheDocument();
   });
 
   it('offers an accessible mobile navigation control', async () => {
@@ -69,7 +69,7 @@ describe('AppShell', () => {
     );
   });
 
-  it('links to the shipped invoice and Trial Balance screens', async () => {
+  it('links to the shipped cash, banking, and reporting screens', async () => {
     render(
       <QueryClientProvider client={createAppQueryClient()}>
         <MemoryRouter initialEntries={['/dashboard']}>
@@ -87,6 +87,13 @@ describe('AppShell', () => {
     );
 
     expect(await screen.findByRole('link', { name: 'Invoices' })).toHaveAttribute('href', '/invoices');
+    expect(screen.getByRole('link', { name: 'Receipts' })).toHaveAttribute('href', '/receipts');
+    expect(screen.getByRole('link', { name: 'Banking' })).toHaveAttribute('href', '/banking');
     expect(screen.getByRole('link', { name: 'Trial Balance' })).toHaveAttribute('href', '/reports/trial-balance');
+    expect(screen.getByRole('link', { name: 'General Ledger' })).toHaveAttribute('href', '/reports/general-ledger');
+    expect(screen.getByRole('link', { name: 'AR Aging' })).toHaveAttribute('href', '/reports/ar-aging');
+    expect(screen.getByRole('link', { name: 'Profit & Loss' })).toHaveAttribute('href', '/reports/profit-loss');
+    expect(screen.getByRole('link', { name: 'Balance Sheet' })).toHaveAttribute('href', '/reports/balance-sheet');
+    expect(screen.getByRole('link', { name: 'Bank Reconciliation' })).toHaveAttribute('href', '/reports/bank-reconciliation');
   });
 });

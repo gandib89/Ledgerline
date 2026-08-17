@@ -8,6 +8,7 @@ import { createDraftInvoice, updateDraftInvoice, previewInvoice } from '../lib/i
 import { postDocument } from '../lib/accounting/post-document.js';
 import { notFound } from '../lib/accounting/errors.js';
 import { serializeJournalEntry } from './journal-entries.js';
+import { getInvoicePaymentHistory } from '../lib/accounting/payment-history.js';
 import { buildInvoiceDateFilter } from './day3-contracts.js';
 
 const router = Router();
@@ -177,6 +178,15 @@ router.get('/invoices/:id', authorize('report.view'), async (req, res, next) => 
     const doc = await prisma.document.findFirst({ where: { id, docType: 'INVOICE' }, include: { lines: true } });
     if (!doc) throw notFound('Invoice not found');
     res.json(serializeInvoice(doc));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/invoices/:id/payments', authorize('report.view'), async (req, res, next) => {
+  try {
+    const id = z.string().uuid().parse(req.params.id);
+    res.json(await getInvoicePaymentHistory(prisma, req.organizationId, id));
   } catch (err) {
     next(err);
   }

@@ -6,8 +6,8 @@ export const demoUser = {
 };
 
 export const demoOrganizations = [
-  { id: 'org-annapurna', name: 'Annapurna Trading Pvt. Ltd.', isActive: true, role: { id: 'role-owner', name: 'Owner' }, permissions: ['invoice.create', 'invoice.post', 'report.view', 'org.manage'] },
-  { id: 'org-sherpa', name: 'Sherpa Ventures Pvt. Ltd.', isActive: true, role: { id: 'role-owner', name: 'Owner' }, permissions: ['invoice.create', 'invoice.post', 'report.view', 'org.manage'] },
+  { id: 'org-annapurna', name: 'Annapurna Trading Pvt. Ltd.', isActive: true, role: { id: 'role-owner', name: 'Owner' }, permissions: ['invoice.create', 'invoice.post', 'payment.create', 'bank.reconcile', 'report.view', 'org.manage'] },
+  { id: 'org-sherpa', name: 'Sherpa Ventures Pvt. Ltd.', isActive: true, role: { id: 'role-owner', name: 'Owner' }, permissions: ['invoice.create', 'invoice.post', 'payment.create', 'bank.reconcile', 'report.view', 'org.manage'] },
 ];
 
 const demoParties = [
@@ -20,6 +20,8 @@ const demoAccounts = [
   { id: '22222222-2222-4222-8222-222222222222', code: '4100', name: 'Sales Revenue — Goods', type: 'REVENUE', isControlAccount: false, isBankAccount: false, isActive: true },
   { id: '22222222-2222-4222-8222-222222222223', code: '4200', name: 'Sales Revenue — Services', type: 'REVENUE', isControlAccount: false, isBankAccount: false, isActive: true },
   { id: '22222222-2222-4222-8222-222222222224', code: '2200', name: 'VAT Payable (Output)', type: 'LIABILITY', isControlAccount: true, isBankAccount: false, isActive: true },
+  { id: '22222222-2222-4222-8222-222222222225', code: '1020', name: 'Bank - Nabil Current', type: 'ASSET', isControlAccount: false, isBankAccount: true, isActive: true },
+  { id: '22222222-2222-4222-8222-222222222226', code: '5500', name: 'Bank Charges', type: 'EXPENSE', isControlAccount: false, isBankAccount: false, isActive: true },
 ];
 
 const demoTaxCodes = [
@@ -84,6 +86,56 @@ const demoInvoices = [{
 }];
 
 const demoJournals = new Map();
+const demoPayments = new Map();
+const demoBankAccounts = [{
+  id: '55555555-5555-4555-8555-555555555555',
+  accountId: demoAccounts[4].id,
+  bankName: 'Nabil Bank',
+  accountNoMasked: '****9231',
+  openingBalance: '500000.00',
+  isActive: true,
+}];
+let demoStatement = null;
+let demoStatementLines = [];
+let demoReconciliation = null;
+let demoBookBalance = '625850.00';
+
+[
+  ['66666666-6666-4666-8666-666666666661', 'JE-2082-0001', 'Opening balance', '2025-07-17', '500000.00'],
+  ['66666666-6666-4666-8666-666666666662', 'JE-2082-0004', 'Himalayan Trek receipt', '2026-02-05', '100000.00'],
+  ['66666666-6666-4666-8666-666666666663', 'JE-2082-0005', 'Everest Cafe receipt', '2026-02-08', '50850.00'],
+].forEach(([id, entryNumber, description, entryDate, debit]) => demoJournals.set(id, {
+  id, entryNumber, description, entryDate, documentType: 'RECEIPT', status: 'posted',
+  lines: [{ id: `${id}-bank`, accountId: demoAccounts[4].id, debit, credit: '0.00', description }],
+}));
+
+function money(value) { return Number(value ?? 0).toFixed(2); }
+
+function currentBankSummary() {
+  const counts = demoStatementLines.reduce((result, line) => {
+    result.total += 1;
+    if (line.status === 'matched') {
+      result.matched += 1;
+      if (line.matchedBy === 'manual') result.manualMatched += 1;
+      else result.autoMatched += 1;
+    } else if (line.status === 'suggested') result.suggested += 1;
+    else if (line.status === 'unmatched') result.unmatched += 1;
+    else if (line.status === 'ignored') result.ignored += 1;
+    return result;
+  }, { autoMatched: 0, manualMatched: 0, suggested: 0, unmatched: 0, ignored: 0, matched: 0, total: 0 });
+  const bankBalance = demoStatement?.closingBalance ?? '624720.00';
+  const difference = money(Number(bankBalance) - Number(demoBookBalance));
+  return {
+    asOf: demoStatement?.periodEnd ?? '2026-02-25',
+    bankAccountId: demoBankAccounts[0].id,
+    statementId: demoStatement?.id ?? null,
+    bankBalance,
+    bookBalance: demoBookBalance,
+    difference,
+    integrity: { balanced: Number(difference) === 0 },
+    counts,
+  };
+}
 
 // Stands in for the httpOnly refresh cookie the mock layer cannot observe.
 export const mockSession = { active: false };
@@ -241,6 +293,217 @@ export const handlers = [
     const journal = demoJournals.get(params.id);
     return journal ? ok(journal) : fail('not_found', 'Journal entry not found', 404);
   }),
+
+  http.get('/api/v1/journal-entries', () => ok([...demoJournals.values()].map((entry) =>
+    Object.fromEntries(Object.entries(entry).filter(([key]) => key !== 'lines'))))),
+
+  http.post('/api/v1/receipts', async ({ request }) => {
+    const input = await request.json();
+    const allocatedAmount = input.allocations.reduce((total, allocation) => total + Number(allocation.amount), 0);
+    const receiptId = globalThis.crypto.randomUUID();
+    const journalEntryId = globalThis.crypto.randomUUID();
+    const receipt = {
+      id: receiptId,
+      docNo: `RCP-2082-${String(demoPayments.size + 1).padStart(4, '0')}`,
+      docDate: input.docDate,
+      partyId: input.partyId,
+      status: 'posted',
+      referenceNo: input.referenceNo || null,
+      notes: input.notes || null,
+      grandTotal: money(input.amount),
+      allocatedAmount: money(allocatedAmount),
+      outstandingAmount: money(Number(input.amount) - allocatedAmount),
+      journalEntryId,
+    };
+    const allocations = input.allocations.map((allocation) => {
+      const invoice = demoInvoices.find(({ id }) => id === allocation.invoiceId);
+      if (invoice) {
+        invoice.outstandingAmount = money(Number(invoice.outstandingAmount) - Number(allocation.amount));
+        invoice.status = Number(invoice.outstandingAmount) === 0 ? 'paid' : 'partially_paid';
+      }
+      const payment = {
+        receiptId,
+        receiptNo: receipt.docNo,
+        docDate: receipt.docDate,
+        referenceNo: receipt.referenceNo,
+        amount: money(allocation.amount),
+        allocatedAt: new Date().toISOString(),
+      };
+      demoPayments.set(allocation.invoiceId, [...(demoPayments.get(allocation.invoiceId) ?? []), payment]);
+      return { invoiceId: allocation.invoiceId, amount: money(allocation.amount) };
+    });
+    const journalEntry = {
+      id: journalEntryId,
+      entryNumber: `JE-2082-${String(demoJournals.size + 1).padStart(4, '0')}`,
+      documentType: 'RECEIPT',
+      entryDate: input.docDate,
+      description: `Receipt ${receipt.docNo}`,
+      status: 'posted',
+      sourceId: receiptId,
+      lines: [
+        { id: globalThis.crypto.randomUUID(), accountId: input.depositAccountId, debit: money(input.amount), credit: '0.00', description: 'Cash received' },
+        { id: globalThis.crypto.randomUUID(), accountId: demoAccounts[0].id, debit: '0.00', credit: money(input.amount), description: 'Customer receivable' },
+      ],
+    };
+    demoJournals.set(journalEntryId, journalEntry);
+    return ok({ receipt, allocations, journalEntry }, { status: 201 });
+  }),
+
+  http.get('/api/v1/invoices/:id/payments', ({ params }) => {
+    const invoice = demoInvoices.find(({ id }) => id === params.id);
+    if (!invoice) return fail('not_found', 'Invoice not found', 404);
+    return ok({ invoiceId: invoice.id, outstandingAmount: invoice.outstandingAmount, payments: demoPayments.get(invoice.id) ?? [] });
+  }),
+
+  http.get('/api/v1/reports/ar-aging', () => {
+    const buckets = [
+      { key: 'current', label: 'Current' },
+      { key: 'd1_30', label: '1-30 days' },
+      { key: 'd31_60', label: '31-60 days' },
+      { key: 'd61_90', label: '61-90 days' },
+      { key: 'd90_plus', label: '90+ days' },
+    ];
+    const open = demoInvoices.filter((invoice) => ['posted', 'partially_paid'].includes(invoice.status) && Number(invoice.outstandingAmount) > 0);
+    const rows = demoParties.map((party) => {
+      const invoices = open.filter((invoice) => invoice.partyId === party.id);
+      const total = invoices.reduce((sum, invoice) => sum + Number(invoice.outstandingAmount), 0);
+      return {
+        partyId: party.id,
+        partyName: party.name,
+        buckets: { current: money(total), d1_30: '0.00', d31_60: '0.00', d61_90: '0.00', d90_plus: '0.00' },
+        total: money(total),
+        invoices: invoices.map((invoice) => ({ id: invoice.id, docNo: invoice.docNo, dueDate: invoice.dueDate, outstandingAmount: invoice.outstandingAmount, bucket: 'current' })),
+      };
+    }).filter((row) => Number(row.total) > 0);
+    const grandTotal = money(rows.reduce((sum, row) => sum + Number(row.total), 0));
+    return ok({ asOf: new Date().toISOString().slice(0, 10), buckets, rows, totals: { grandTotal }, integrity: { arControlBalance: grandTotal, balanced: true } });
+  }),
+
+  http.get('/api/v1/reports/general-ledger', ({ request }) => {
+    const accountId = new URL(request.url).searchParams.get('accountId');
+    const account = demoAccounts.find(({ id }) => id === accountId);
+    if (!account) return fail('not_found', 'Account not found', 404);
+    let running = 0;
+    const lines = [...demoJournals.values()].flatMap((entry) => entry.lines.filter((line) => line.accountId === accountId).map((line) => {
+      running += Number(line.debit) - Number(line.credit);
+      const invoice = demoInvoices.find(({ journalEntryId }) => journalEntryId === entry.id);
+      return {
+        entryDate: entry.entryDate,
+        entryNumber: entry.entryNumber,
+        description: line.description ?? entry.description,
+        debit: line.debit,
+        credit: line.credit,
+        runningBalance: money(running),
+        journalEntryId: entry.id,
+        sourceDocumentId: invoice?.id ?? null,
+        sourceDocType: invoice ? 'invoice' : null,
+        sourceDocNo: invoice?.docNo ?? null,
+      };
+    }));
+    return ok({ account, from: '2025-07-16', to: new Date().toISOString().slice(0, 10), openingBalance: '0.00', lines, closingBalance: money(running) });
+  }),
+
+  http.get('/api/v1/reports/profit-loss', () => ok({
+    from: '2025-07-16', to: new Date().toISOString().slice(0, 10),
+    revenue: [{ code: '4100', name: 'Sales Revenue - Goods', amount: '150000.00' }, { code: '4200', name: 'Sales Revenue - Services', amount: '45000.00' }],
+    revenueTotal: '195000.00',
+    expense: [{ code: '5300', name: 'Rent Expense', amount: '25000.00' }, { code: '5500', name: 'Bank Charges', amount: demoBookBalance === '624720.00' ? '1130.00' : '0.00' }],
+    expenseTotal: demoBookBalance === '624720.00' ? '26130.00' : '25000.00',
+    netProfit: demoBookBalance === '624720.00' ? '168870.00' : '170000.00',
+  })),
+
+  http.get('/api/v1/reports/balance-sheet', () => ok({
+    asOf: new Date().toISOString().slice(0, 10),
+    assets: [{ code: '1020', name: 'Bank - Nabil Current', amount: demoBookBalance }, { code: '1100', name: 'Accounts Receivable', amount: '69500.00' }],
+    liabilities: [{ code: '2200', name: 'VAT Payable (Output)', amount: '25350.00' }],
+    equity: [{ code: '3100', name: "Owner's Capital", amount: '500000.00' }, { code: null, name: 'Current Year Earnings', amount: demoBookBalance === '624720.00' ? '168870.00' : '170000.00' }],
+    totals: { assets: demoBookBalance === '624720.00' ? '694220.00' : '695350.00', liabilities: '25350.00', equity: demoBookBalance === '624720.00' ? '668870.00' : '670000.00' },
+    integrity: { balanced: true, difference: '0.00' },
+  })),
+
+  http.get('/api/v1/bank-accounts', () => ok(demoBankAccounts)),
+
+  http.post('/api/v1/bank-accounts/:id/statements', ({ params }) => {
+    if (!demoBankAccounts.some(({ id }) => id === params.id)) return fail('not_found', 'Bank account not found', 404);
+    demoStatement = {
+      id: '77777777-7777-4777-8777-777777777777', bankAccountId: params.id, fileName: 'nabil-current-jan-feb-2026.csv',
+      periodStart: '2026-01-20', periodEnd: '2026-02-25', openingBalance: '500000.00', closingBalance: '624720.00', lineCount: 4,
+    };
+    demoStatementLines = [
+      { id: '88888888-8888-4888-8888-888888888881', statementId: demoStatement.id, txnDate: '2026-01-20', description: 'RENT PAYMENT ANNAPURNA COMPLEX', reference: 'CHQ 004821', debit: '25000.00', credit: '0.00', runningBalance: '475000.00', status: 'matched', matchedJournalLineId: 'rent-bank-line', matchConfidence: '0.970', matchedBy: 'auto', ignoreReason: null },
+      { id: '88888888-8888-4888-8888-888888888882', statementId: demoStatement.id, txnDate: '2026-02-05', description: 'NEFT HIMALAYAN TREK SUPPLIES', reference: 'NEFT8834512', debit: '0.00', credit: '100000.00', runningBalance: '575000.00', status: 'matched', matchedJournalLineId: '66666666-6666-4666-8666-666666666662-bank', matchConfidence: '1.000', matchedBy: 'auto', ignoreReason: null },
+      { id: '88888888-8888-4888-8888-888888888883', statementId: demoStatement.id, txnDate: '2026-02-08', description: 'IPS EVEREST CAFE', reference: 'IPS2210094', debit: '0.00', credit: '50850.00', runningBalance: '625850.00', status: 'suggested', matchedJournalLineId: '66666666-6666-4666-8666-666666666663-bank', matchConfidence: '0.840', matchedBy: null, ignoreReason: null },
+      { id: '88888888-8888-4888-8888-888888888884', statementId: demoStatement.id, txnDate: '2026-02-25', description: 'MONTHLY SERVICE CHARGE', reference: '', debit: '1130.00', credit: '0.00', runningBalance: '624720.00', status: 'unmatched', matchedJournalLineId: null, matchConfidence: null, matchedBy: null, ignoreReason: null },
+    ];
+    demoReconciliation = null;
+    demoBookBalance = '625850.00';
+    return ok({ statement: demoStatement, imported: 4, autoMatched: 2, suggested: 1, unmatched: 1 });
+  }),
+
+  http.get('/api/v1/statements/:id/lines', ({ params }) => {
+    if (!demoStatement || demoStatement.id !== params.id) return fail('not_found', 'Statement not found', 404);
+    return ok({ ...demoStatement, lines: demoStatementLines });
+  }),
+
+  http.post('/api/v1/lines/:id/match', async ({ params, request }) => {
+    const input = await request.json();
+    const line = demoStatementLines.find(({ id }) => id === params.id);
+    if (!line) return fail('not_found', 'Statement line not found', 404);
+    Object.assign(line, { status: 'matched', matchedJournalLineId: input.journalLineId, matchConfidence: '1.000', matchedBy: 'manual' });
+    return ok(line);
+  }),
+
+  http.post('/api/v1/lines/:id/reject', ({ params }) => {
+    const line = demoStatementLines.find(({ id }) => id === params.id);
+    if (!line) return fail('not_found', 'Statement line not found', 404);
+    if (line.status !== 'suggested') return fail('line_not_suggested', 'Only a suggested match can be rejected', 422);
+    Object.assign(line, { status: 'unmatched', matchedJournalLineId: null, matchConfidence: null, matchedBy: null });
+    return ok(line);
+  }),
+
+  http.post('/api/v1/lines/:id/create-entry', ({ params }) => {
+    const line = demoStatementLines.find(({ id }) => id === params.id);
+    if (!line) return fail('not_found', 'Statement line not found', 404);
+    const journalEntryId = globalThis.crypto.randomUUID();
+    const bankLineId = globalThis.crypto.randomUUID();
+    const amount = Number(line.debit) > 0 ? Number(line.debit) : Number(line.credit);
+    demoBookBalance = money(Number(demoBookBalance) + (Number(line.credit) > 0 ? amount : -amount));
+    demoJournals.set(journalEntryId, {
+      id: journalEntryId, entryNumber: `JE-2082-${String(demoJournals.size + 1).padStart(4, '0')}`, entryDate: line.txnDate,
+      description: line.description, documentType: 'BANK_ADJUSTMENT', status: 'posted',
+      lines: [
+        { id: bankLineId, accountId: demoAccounts[4].id, debit: Number(line.credit) > 0 ? money(amount) : '0.00', credit: Number(line.debit) > 0 ? money(amount) : '0.00', description: line.description },
+        { id: globalThis.crypto.randomUUID(), accountId: demoAccounts[5].id, debit: Number(line.debit) > 0 ? money(amount) : '0.00', credit: Number(line.credit) > 0 ? money(amount) : '0.00', description: line.description },
+      ],
+    });
+    Object.assign(line, { status: 'matched', matchedJournalLineId: bankLineId, matchConfidence: '1.000', matchedBy: 'auto' });
+    return ok({ statementLine: line, journalEntryId }, { status: 201 });
+  }),
+
+  http.post('/api/v1/lines/:id/ignore', async ({ params, request }) => {
+    const line = demoStatementLines.find(({ id }) => id === params.id);
+    if (!line) return fail('not_found', 'Statement line not found', 404);
+    const { reason } = await request.json();
+    Object.assign(line, { status: 'ignored', ignoreReason: reason });
+    return ok(line);
+  }),
+
+  http.post('/api/v1/reconciliations', () => {
+    const summary = currentBankSummary();
+    demoReconciliation = { id: '99999999-9999-4999-8999-999999999999', bankAccountId: summary.bankAccountId, statementId: summary.statementId, asOfDate: summary.asOf, bookBalance: summary.bookBalance, bankBalance: summary.bankBalance, difference: summary.difference, unreconciledCount: summary.counts.suggested + summary.counts.unmatched, status: 'in_progress' };
+    return ok(demoReconciliation, { status: 201 });
+  }),
+
+  http.post('/api/v1/reconciliations/:id/complete', ({ params }) => {
+    if (!demoReconciliation || demoReconciliation.id !== params.id) return fail('not_found', 'Reconciliation not found', 404);
+    const summary = currentBankSummary();
+    if (!summary.integrity.balanced || summary.counts.suggested + summary.counts.unmatched > 0) return fail('reconciliation_not_balanced', 'Resolve all lines and reduce the difference to zero', 422);
+    demoStatementLines.forEach((line) => { if (line.status === 'matched') line.status = 'reconciled'; });
+    demoReconciliation = { ...demoReconciliation, status: 'completed', difference: '0.00', unreconciledCount: 0 };
+    return ok(demoReconciliation);
+  }),
+
+  http.get('/api/v1/reports/bank-reconciliation', () => ok(currentBankSummary())),
 
   http.get('/api/v1/reports/trial-balance', () => ok({
     asOf: '2026-08-14',

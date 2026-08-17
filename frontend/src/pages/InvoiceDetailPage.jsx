@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import { AsyncState } from '../components/AsyncState.jsx';
 import { Money } from '../components/Money.jsx';
+import { PaymentHistory } from '../components/PaymentHistory.jsx';
 import { useToast } from '../components/toast-context.js';
 import { apiRequest } from '../lib/api-client.js';
 
@@ -160,6 +161,8 @@ export function InvoiceDetailPage() {
           <AsyncState title="Journal unavailable" message={journal.error.message} />
         ) : <JournalPanel journal={displayedJournal} accountNames={accountNames} />}
       </div>
+
+      {document.status !== 'draft' && <PaymentHistory organizationId={activeOrganizationId} invoiceId={document.id} />}
 
       {confirming && (
         <div className="dialog-backdrop">

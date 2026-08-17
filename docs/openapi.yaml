@@ -1223,6 +1223,58 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /invoices/{id}/payments:
+    get:
+      summary: List receipt allocations applied to an invoice
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invoice outstanding balance and payment-allocation history
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invoiceId, outstandingAmount, payments]
+                properties:
+                  invoiceId:
+                    type: string
+                    format: uuid
+                  outstandingAmount:
+                    type: string
+                    pattern: '^-?\d+\.\d{2}$'
+                  payments:
+                    type: array
+                    items:
+                      type: object
+                      required: [receiptId, receiptNo, docDate, amount, allocatedAt]
+                      properties:
+                        receiptId:
+                          type: string
+                          format: uuid
+                        receiptNo:
+                          type: string
+                        docDate:
+                          type: string
+                          format: date
+                        referenceNo:
+                          type: string
+                          nullable: true
+                        amount:
+                          type: string
+                          pattern: '^\d+\.\d{2}$'
+                        allocatedAt:
+                          type: string
+                          format: date-time
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /journal-entries:
     get:
       summary: List journal entries
@@ -1538,6 +1590,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/JournalEntry'
+
+  /lines/{id}/reject:
+    post:
+      summary: Reject a suggested match and return the statement line to unmatched
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Suggestion cleared and line marked unmatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankStatementLine'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: The line is not currently a suggestion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /lines/{id}/ignore:
     post:
