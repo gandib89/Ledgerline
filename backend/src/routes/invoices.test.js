@@ -211,6 +211,45 @@ describe('PATCH /invoices/:id — optimistic concurrency', () => {
   });
 });
 
+describe('GET /invoices/:id/payments', () => {
+  it('returns allocated receipts and the recalculated outstanding amount', async () => {
+    const bankAccount = await prisma.account.create({
+      data: {
+        organizationId: owner.orgId,
+        code: `102${Date.now().toString().slice(-3)}`,
+        name: 'Nabil Current for payment history',
+        type: 'ASSET',
+        isBankAccount: true,
+      },
+    });
+    const created = await request(app).post('/api/v1/invoices').set(owner.headers).send(invoiceBody({ docDate: '2025-07-29' }));
+    await request(app).post(`/api/v1/invoices/${created.body.id}/post`).set(owner.headers).send();
+    const receipt = await request(app).post('/api/v1/receipts').set(owner.headers).send({
+      partyId: party.id,
+      docDate: '2025-07-30',
+      depositAccountId: bankAccount.id,
+      amount: '50000.00',
+      referenceNo: 'BNK-93',
+      allocations: [{ invoiceId: created.body.id, amount: '50000.00' }],
+    });
+    expect(receipt.status).toBe(201);
+
+    const response = await request(app).get(`/api/v1/invoices/${created.body.id}/payments`).set(owner.headers);
+
+    expect(response.status).toBe(200);
+    expect(response.body.outstandingAmount).toBe('70000.00');
+    expect(response.body.payments).toEqual([
+      expect.objectContaining({
+        receiptId: receipt.body.receipt.id,
+        receiptNo: receipt.body.receipt.docNo,
+        docDate: '2025-07-30',
+        referenceNo: 'BNK-93',
+        amount: '50000.00',
+      }),
+    ]);
+  });
+});
+
 describe('period locking, enforced at the API', () => {
   it('rejects posting into a locked period', async () => {
     const created = await request(app)

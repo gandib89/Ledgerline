@@ -10,6 +10,13 @@ import { InvoiceDetailPage } from './pages/InvoiceDetailPage.jsx';
 import { InvoiceEditorPage } from './pages/InvoiceEditorPage.jsx';
 import { InvoicesPage } from './pages/InvoicesPage.jsx';
 import { TrialBalancePage } from './pages/TrialBalancePage.jsx';
+import { ArAgingPage } from './pages/ArAgingPage.jsx';
+import { BalanceSheetPage } from './pages/BalanceSheetPage.jsx';
+import { BankReconciliationPage } from './pages/BankReconciliationPage.jsx';
+import { BankingPage } from './pages/BankingPage.jsx';
+import { GeneralLedgerPage } from './pages/GeneralLedgerPage.jsx';
+import { ProfitLossPage } from './pages/ProfitLossPage.jsx';
+import { ReceiptPage } from './pages/ReceiptPage.jsx';
 
 function App() {
   return (
@@ -25,7 +32,14 @@ function App() {
           <Route path="/invoices/new" element={<InvoiceEditorPage />} />
           <Route path="/invoices/:id/edit" element={<InvoiceEditorPage />} />
           <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+          <Route path="/receipts" element={<ReceiptPage />} />
+          <Route path="/banking" element={<BankingPage />} />
           <Route path="/reports/trial-balance" element={<TrialBalancePage />} />
+          <Route path="/reports/general-ledger" element={<GeneralLedgerPage />} />
+          <Route path="/reports/ar-aging" element={<ArAgingPage />} />
+          <Route path="/reports/profit-loss" element={<ProfitLossPage />} />
+          <Route path="/reports/balance-sheet" element={<BalanceSheetPage />} />
+          <Route path="/reports/bank-reconciliation" element={<BankReconciliationPage />} />
         </Route>
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

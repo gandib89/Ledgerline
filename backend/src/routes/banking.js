@@ -10,6 +10,7 @@ import { runIdempotent } from '../lib/idempotency/run-idempotent.js';
 import { importStatement } from '../lib/banking/statement-import-service.js';
 import { csvImportLimiter } from '../lib/rate-limit.js';
 import { fileSha256 } from '../lib/banking/csv.js';
+import { rejectSuggestedLine } from '../lib/banking/reject-suggestion.js';
 import {
   manualMatchLine, createEntryFromLine, ignoreLine, createReconciliation, completeReconciliation,
 } from '../lib/banking/reconciliation-service.js';
@@ -234,6 +235,24 @@ router.post('/lines/:id/match', authorize('bank.reconcile'), async (req, res, ne
     const line = await manualMatchLine(actor, id, journalLineId);
 
     req.auditEntry = { action: 'statementLine.matched', entityType: 'BankStatementLine', entityId: line.id, before: null, after: { matchedJournalLineId: journalLineId, matchedBy: 'manual' } };
+    res.json(serializeStatementLine(line));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/lines/:id/reject', authorize('bank.reconcile'), async (req, res, next) => {
+  try {
+    const id = z.string().uuid().parse(req.params.id);
+    const line = await rejectSuggestedLine(prisma, req.organizationId, id);
+
+    req.auditEntry = {
+      action: 'statementLine.suggestionRejected',
+      entityType: 'BankStatementLine',
+      entityId: line.id,
+      before: { status: 'suggested' },
+      after: { status: 'unmatched' },
+    };
     res.json(serializeStatementLine(line));
   } catch (err) {
     next(err);

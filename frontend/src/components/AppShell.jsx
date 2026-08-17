@@ -7,15 +7,19 @@ import { AsyncState } from './AsyncState.jsx';
 import { Icon } from './Icon.jsx';
 import { useToast } from './toast-context.js';
 
-// `to` is set for shipped screens; the rest stay parked until their day.
 const navigation = [
   ['dashboard', 'Dashboard', '/dashboard'],
   ['customers', 'Customers', '/customers'],
   ['invoices', 'Invoices', '/invoices'],
+  ['receipts', 'Receipts', '/receipts'],
+  ['banking', 'Banking', '/banking'],
   ['reports', 'Trial Balance', '/reports/trial-balance'],
+  ['reports', 'General Ledger', '/reports/general-ledger'],
+  ['reports', 'AR Aging', '/reports/ar-aging'],
+  ['reports', 'Profit & Loss', '/reports/profit-loss'],
+  ['reports', 'Balance Sheet', '/reports/balance-sheet'],
+  ['reports', 'Bank Reconciliation', '/reports/bank-reconciliation'],
   ['reports', 'Chart of accounts', '/accounts'],
-  ['receipts', 'Receipts'],
-  ['banking', 'Banking'],
   ['audit', 'Audit trail'],
 ];
 
@@ -85,7 +89,7 @@ export function AppShell() {
           <span className="status-dot" />
           <div>
             <strong>System ready</strong>
-            <span>Frontend foundation</span>
+            <span>Ledger controls active</span>
           </div>
         </div>
       </aside>
