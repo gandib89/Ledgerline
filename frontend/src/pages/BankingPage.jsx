@@ -45,6 +45,7 @@ export function BankingPage() {
   const [candidateByLine, setCandidateByLine] = useState({});
   const [accountByLine, setAccountByLine] = useState({});
   const [reasonByLine, setReasonByLine] = useState({});
+  const [mobilePanel, setMobilePanel] = useState('statement');
 
   const bankAccounts = useQuery({ queryKey: ['bank-accounts', activeOrganizationId], queryFn: () => apiRequest('/bank-accounts'), enabled: Boolean(activeOrganizationId) });
   const bankAccountId = selectedBankId || bankAccounts.data?.[0]?.id || '';
@@ -128,13 +129,23 @@ export function BankingPage() {
     importStatement.mutate();
   }
 
+  function selectMobilePanel(event, panel) {
+    if (event.type === 'keydown' && !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    if (event.type === 'keydown') event.preventDefault();
+    const nextPanel = event.type === 'keydown' ? (panel === 'statement' ? 'ledger' : 'statement') : panel;
+    setMobilePanel(nextPanel);
+    if (event.type === 'keydown') {
+      event.currentTarget.parentElement.querySelector(`[data-panel-tab="${nextPanel}"]`)?.focus();
+    }
+  }
+
   if (bankAccounts.isPending || accounts.isPending) return <AsyncState title="Loading banking workspace" message="Fetching bank and ledger accounts." />;
   const loadError = bankAccounts.error ?? accounts.error;
-  if (loadError) return <AsyncState title="Banking unavailable" message={loadError.message} />;
+  if (loadError) return <AsyncState tone="error" title="Banking unavailable" message={loadError.message} />;
 
   return <div className="accounting-page banking-page">
     <div className="page-heading"><div><p className="eyebrow">Banking</p><h1>Statement reconciliation</h1><p>Import bank activity, resolve every line, and close at zero difference.</p></div><label className="bank-selector">Bank account<select aria-label="Bank account" value={bankAccountId} onChange={(event) => { setSelectedBankId(event.target.value); setStatementId(''); setImportSummary(null); setReconciliation(null); }}>{bankAccounts.data.map((item) => <option key={item.id} value={item.id}>{item.bankName} {item.accountNoMasked}</option>)}</select></label></div>
-    {!bankAccountId ? <AsyncState title="No bank account configured" message="Create a bank account before importing a statement." /> : <>
+    {!bankAccountId ? <AsyncState tone="empty" title="No bank account configured" message="Create a bank account before importing a statement." /> : <>
       <form className="statement-upload report-surface" onSubmit={submitImport}>
         <div className="section-heading"><div><h2>Import statement</h2><p>CSV only, maximum 2 MB. The import is all-or-nothing.</p></div></div>
         <label className="file-drop">Bank statement CSV<input aria-label="Bank statement CSV" type="file" accept=".csv,text/csv,application/vnd.ms-excel" onChange={chooseFile} /><span>{file?.name ?? 'Choose a CSV file'}</span></label>
@@ -143,10 +154,14 @@ export function BankingPage() {
         <button className="primary-button" type="submit" disabled={!canReconcile || importStatement.isPending}>{importStatement.isPending ? 'Importing…' : 'Import statement'}</button>
       </form>
       {importSummary && <div className="import-summary" aria-live="polite"><strong>{importSummary.imported} lines imported</strong><span>{importSummary.autoMatched} auto-matched</span><span>{importSummary.suggested} suggested</span><span>{importSummary.unmatched} unmatched</span></div>}
-      {statementId && (statement.isPending || ledgerMovements.isPending || summary.isPending) ? <AsyncState title="Preparing reconciliation" message="Loading statement lines and ledger movements." /> : statement.isError || ledgerMovements.isError || summary.isError ? <AsyncState title="Reconciliation unavailable" message={(statement.error ?? ledgerMovements.error ?? summary.error)?.message} /> : statement.data && <>
+      {statementId && (statement.isPending || ledgerMovements.isPending || summary.isPending) ? <AsyncState title="Preparing reconciliation" message="Loading statement lines and ledger movements." /> : statement.isError || ledgerMovements.isError || summary.isError ? <AsyncState tone="error" title="Reconciliation unavailable" message={(statement.error ?? ledgerMovements.error ?? summary.error)?.message} /> : statement.data && <>
+        <div className="reconciliation-tabs" role="tablist" aria-label="Reconciliation workspace">
+          <button id="statement-lines-tab" data-panel-tab="statement" role="tab" type="button" aria-selected={mobilePanel === 'statement'} aria-controls="statement-lines-panel" tabIndex={mobilePanel === 'statement' ? 0 : -1} onClick={(event) => selectMobilePanel(event, 'statement')} onKeyDown={(event) => selectMobilePanel(event, 'statement')}>Statement lines</button>
+          <button id="ledger-movements-tab" data-panel-tab="ledger" role="tab" type="button" aria-selected={mobilePanel === 'ledger'} aria-controls="ledger-movements-panel" tabIndex={mobilePanel === 'ledger' ? 0 : -1} onClick={(event) => selectMobilePanel(event, 'ledger')} onKeyDown={(event) => selectMobilePanel(event, 'ledger')}>Ledger movements</button>
+        </div>
         <div className="reconciliation-workspace">
-          <section><h2>Statement lines</h2><div className="statement-line-list">{statement.data.lines.map((line) => <StatementLine key={line.id} line={line} movements={ledgerMovements.data} otherAccounts={otherAccounts} candidate={candidateByLine[line.id] ?? ''} account={accountByLine[line.id] ?? ''} reason={reasonByLine[line.id] ?? ''} pending={updateLine.isPending} onCandidate={(value) => setCandidateByLine((current) => ({ ...current, [line.id]: value }))} onAccount={(value) => setAccountByLine((current) => ({ ...current, [line.id]: value }))} onReason={(value) => setReasonByLine((current) => ({ ...current, [line.id]: value }))} mutate={(path, body) => updateLine.mutate({ path, body })} />)}</div></section>
-          <section className="ledger-movement-column"><h2>Available ledger movements</h2>{ledgerMovements.data.length === 0 ? <AsyncState title="No available movements" message="Create an entry from an unmatched statement line when required." /> : ledgerMovements.data.map((line) => <article className="ledger-movement" key={line.id}><div><strong>{line.entryNumber}</strong><span>{line.entryDate}</span></div><p>{line.description ?? line.entryDescription}</p><Money value={toCents(line.debit) > 0n ? line.debit : line.credit} /></article>)}</section>
+          <section id="statement-lines-panel" role="tabpanel" aria-labelledby="statement-lines-tab" data-mobile-active={mobilePanel === 'statement'}><h2>Statement lines</h2><div className="statement-line-list">{statement.data.lines.map((line) => <StatementLine key={line.id} line={line} movements={ledgerMovements.data} otherAccounts={otherAccounts} candidate={candidateByLine[line.id] ?? ''} account={accountByLine[line.id] ?? ''} reason={reasonByLine[line.id] ?? ''} pending={updateLine.isPending} onCandidate={(value) => setCandidateByLine((current) => ({ ...current, [line.id]: value }))} onAccount={(value) => setAccountByLine((current) => ({ ...current, [line.id]: value }))} onReason={(value) => setReasonByLine((current) => ({ ...current, [line.id]: value }))} mutate={(path, body) => updateLine.mutate({ path, body })} />)}</div></section>
+          <section id="ledger-movements-panel" role="tabpanel" aria-labelledby="ledger-movements-tab" data-mobile-active={mobilePanel === 'ledger'} className="ledger-movement-column"><h2>Available ledger movements</h2>{ledgerMovements.data.length === 0 ? <AsyncState tone="empty" title="No available movements" message="Create an entry from an unmatched statement line when required." /> : ledgerMovements.data.map((line) => <article className="ledger-movement" key={line.id}><div><strong>{line.entryNumber}</strong><span>{line.entryDate}</span></div><p>{line.description ?? line.entryDescription}</p><Money value={toCents(line.debit) > 0n ? line.debit : line.credit} /></article>)}</section>
         </div>
         <div className={`reconciliation-footer ${toCents(currentDifference) === 0n ? 'reconciliation-zero' : ''}`}><div><span>Book</span><Money value={summary.data.bookBalance} /></div><div><span>Bank</span><Money value={summary.data.bankBalance} /></div><div><span>Difference</span><Money value={currentDifference} /></div><div><span>Unresolved</span><strong>{unresolved}</strong></div>{!reconciliation ? <button className="secondary-button" type="button" disabled={prepare.isPending || unresolved > 0} onClick={() => prepare.mutate()}>{prepare.isPending ? 'Preparing…' : 'Prepare reconciliation'}</button> : <button className="primary-button" type="button" disabled={!canComplete || complete.isPending} onClick={() => complete.mutate()}>{complete.isPending ? 'Completing…' : reconciliation.status === 'completed' ? 'Completed' : 'Complete reconciliation'}</button>}</div>
       </>}

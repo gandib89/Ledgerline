@@ -95,5 +95,6 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: 'Profit & Loss' })).toHaveAttribute('href', '/reports/profit-loss');
     expect(screen.getByRole('link', { name: 'Balance Sheet' })).toHaveAttribute('href', '/reports/balance-sheet');
     expect(screen.getByRole('link', { name: 'Bank Reconciliation' })).toHaveAttribute('href', '/reports/bank-reconciliation');
+    expect(screen.getByRole('link', { name: 'Audit trail' })).toHaveAttribute('href', '/audit');
   });
 });

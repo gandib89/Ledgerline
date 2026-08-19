@@ -192,7 +192,7 @@ export function InvoiceEditorPage() {
   const previewEligible = invoiceLinesSchema.safeParse(form.lines).success;
 
   if (selectorsPending) return <AsyncState title="Preparing invoice editor" message="Loading customers, revenue accounts, and VAT codes." />;
-  if (selectorError) return <AsyncState title="Invoice editor unavailable" message={selectorError.message} />;
+  if (selectorError) return <AsyncState tone="error" title="Invoice editor unavailable" message={selectorError.message} />;
 
   return (
     <div className="accounting-page invoice-editor-page">

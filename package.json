@@ -1,0 +1,7 @@
+{
+  "name": "ledgerline",
+  "private": true,
+  "scripts": {
+    "seed:demo": "npm --prefix backend run seed:demo"
+  }
+}

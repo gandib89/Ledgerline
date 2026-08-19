@@ -1,5 +1,6 @@
 import { prisma } from '../src/db/client.js';
 import { hashPassword } from '../src/lib/auth/password.js';
+import { seedDemoScenario } from './demo-data.js';
 
 const ROLES = ['Owner', 'Accountant', 'Clerk', 'Viewer'];
 
@@ -255,6 +256,15 @@ async function main() {
     await seedAccounts(org.id);
     await seedTaxCodes(org.id);
     await seedParties(org.id, parties);
+
+    if (name === 'Annapurna Trading Pvt. Ltd.') {
+      const actor = await prisma.user.findUniqueOrThrow({ where: { email: 'sunita@annapurnatrading.com.np' } });
+      const membership = await prisma.membership.findUniqueOrThrow({
+        where: { userId_organizationId: { userId: actor.id, organizationId: org.id } },
+      });
+      await seedDemoScenario(prisma, { organizationId: org.id, userId: actor.id, roleId: membership.roleId });
+      console.log('Seeded exact Section 14 invoices, receipts, statement, audit trail, and zero-difference reconciliation');
+    }
 
     console.log(`Seeded ${name}: ${members.length} members, ${ACCOUNTS.length} accounts, ${parties.length} customers`);
   }

@@ -6,8 +6,8 @@ export const demoUser = {
 };
 
 export const demoOrganizations = [
-  { id: 'org-annapurna', name: 'Annapurna Trading Pvt. Ltd.', isActive: true, role: { id: 'role-owner', name: 'Owner' }, permissions: ['invoice.create', 'invoice.post', 'payment.create', 'bank.reconcile', 'report.view', 'org.manage'] },
-  { id: 'org-sherpa', name: 'Sherpa Ventures Pvt. Ltd.', isActive: true, role: { id: 'role-owner', name: 'Owner' }, permissions: ['invoice.create', 'invoice.post', 'payment.create', 'bank.reconcile', 'report.view', 'org.manage'] },
+  { id: 'org-annapurna', name: 'Annapurna Trading Pvt. Ltd.', isActive: true, role: { id: 'role-owner', name: 'Owner' }, permissions: ['invoice.create', 'invoice.post', 'payment.create', 'bank.reconcile', 'report.view', 'audit.view', 'org.manage'] },
+  { id: 'org-sherpa', name: 'Sherpa Ventures Pvt. Ltd.', isActive: true, role: { id: 'role-owner', name: 'Owner' }, permissions: ['invoice.create', 'invoice.post', 'payment.create', 'bank.reconcile', 'report.view', 'audit.view', 'org.manage'] },
 ];
 
 const demoParties = [
@@ -185,6 +185,28 @@ export const handlers = [
   }),
 
   http.get('/api/v1/orgs', () => ok(demoOrganizations)),
+
+  http.get('/api/v1/audit-log', ({ request }) => {
+    const params = new URL(request.url).searchParams;
+    const records = [{
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', action: 'reconciliation.completed',
+      entityType: 'Reconciliation', entityId: '99999999-9999-4999-8999-999999999999',
+      before: { status: 'IN_PROGRESS', difference: '1130.00', unreconciledCount: 1 },
+      after: { status: 'COMPLETED', difference: '0.00', unreconciledCount: 0 },
+      actorId: demoUser.id, actor: demoUser, ipAddress: '127.0.0.1',
+      requestId: 'demo-reconciliation-complete', createdAt: '2026-02-25T10:15:00.000Z',
+    }, {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', action: 'invoice.posted',
+      entityType: 'Document', entityId: '44444444-4444-4444-8444-444444444444',
+      before: { status: 'DRAFT', docNo: null }, after: { status: 'POSTED', docNo: 'INV-2082-0003' },
+      actorId: demoUser.id, actor: demoUser, ipAddress: '127.0.0.1',
+      requestId: 'demo-invoice-post', createdAt: '2026-02-18T08:35:00.000Z',
+    }].filter((entry) =>
+      (!params.get('entityType') || entry.entityType === params.get('entityType'))
+      && (!params.get('entityId') || entry.entityId === params.get('entityId'))
+      && (!params.get('actorId') || entry.actorId === params.get('actorId')));
+    return ok(records);
+  }),
 
   http.get('/api/v1/dashboard/summary', ({ request }) => {
     const orgId = request.headers.get('X-Organization-Id') ?? demoOrganizations[0].id;

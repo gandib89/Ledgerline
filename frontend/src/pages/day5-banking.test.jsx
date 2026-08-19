@@ -89,4 +89,29 @@ describe('Day 5 banking workflow', () => {
 
     expect(await screen.findByRole('button', { name: 'Completed' })).toBeDisabled();
   });
+
+  it('switches the mobile reconciliation workspace between linked statement and ledger tabs', async () => {
+    const user = userEvent.setup();
+    renderBanking();
+    const file = new File([
+      'Date,Description,Reference,Debit,Credit,Balance\n2026-02-25,MONTHLY SERVICE CHARGE,,1130,0,624720',
+    ], 'nabil-current-jan-feb-2026.csv', { type: 'text/csv' });
+
+    await user.upload(await screen.findByLabelText('Bank statement CSV'), file);
+    await user.click(screen.getByRole('button', { name: 'Import statement' }));
+    expect((await screen.findAllByText('MONTHLY SERVICE CHARGE')).length).toBeGreaterThan(0);
+
+    const tablist = screen.getByRole('tablist', { name: 'Reconciliation workspace' });
+    const statementTab = within(tablist).getByRole('tab', { name: 'Statement lines' });
+    const ledgerTab = within(tablist).getByRole('tab', { name: 'Ledger movements' });
+    expect(statementTab).toHaveAttribute('aria-selected', 'true');
+    expect(statementTab).toHaveAttribute('aria-controls', 'statement-lines-panel');
+    expect(screen.getByRole('tabpanel', { name: 'Statement lines' })).toHaveAttribute('data-mobile-active', 'true');
+
+    await user.click(ledgerTab);
+    expect(ledgerTab).toHaveAttribute('aria-selected', 'true');
+    expect(ledgerTab).toHaveAttribute('aria-controls', 'ledger-movements-panel');
+    expect(screen.getByRole('tabpanel', { name: 'Ledger movements' })).toHaveAttribute('data-mobile-active', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Statement lines' })).toHaveAttribute('data-mobile-active', 'false');
+  });
 });

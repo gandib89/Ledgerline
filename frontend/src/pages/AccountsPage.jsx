@@ -36,9 +36,9 @@ export function AccountsPage() {
       {!activeOrganizationId || accounts.isPending ? (
         <AsyncState title="Loading accounts" message="Fetching this organization's chart of accounts." />
       ) : accounts.isError ? (
-        <AsyncState title="Accounts unavailable" message={accounts.error.message} />
+        <AsyncState tone="error" title="Accounts unavailable" message={accounts.error.message} />
       ) : accounts.data.length === 0 ? (
-        <AsyncState title="No accounts yet" message="This organization has no chart of accounts." />
+        <AsyncState tone="empty" title="No accounts yet" message="This organization has no chart of accounts." />
       ) : (
         TYPE_ORDER.map(([type, label]) => {
           const group = accounts.data.filter((account) => account.type === type);

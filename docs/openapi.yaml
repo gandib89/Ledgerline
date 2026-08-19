@@ -574,6 +574,17 @@ components:
           type: string
           format: uuid
           nullable: true
+        actor:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              format: email
+              nullable: true
         ipAddress:
           type: string
         requestId:
