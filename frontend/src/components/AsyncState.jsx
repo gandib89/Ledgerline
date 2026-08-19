@@ -1,6 +1,6 @@
-export function AsyncState({ title, message, action }) {
+export function AsyncState({ title, message, action, tone = 'status' }) {
   return (
-    <div className="async-state" role="status">
+    <div className={`async-state async-state-${tone}`} role={tone === 'error' ? 'alert' : 'status'}>
       <span className="async-state-mark" aria-hidden="true" />
       <div>
         <strong>{title}</strong>

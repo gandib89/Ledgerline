@@ -66,7 +66,7 @@ export function DashboardPage() {
       {!activeOrganizationId || pending ? (
         <AsyncState title="Preparing your workspace" message="Loading organization context and balances." />
       ) : error ? (
-        <AsyncState title="Dashboard unavailable" message={error.message} />
+        <AsyncState tone="error" title="Dashboard unavailable" message={error.message} />
       ) : (
         <>
           <div className="period-row"><span>{summary.periodLabel}</span><span>Amounts in NPR</span></div>

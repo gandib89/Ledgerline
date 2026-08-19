@@ -146,7 +146,7 @@ export function CustomersPage() {
       {!activeOrganizationId || parties.isPending ? (
         <AsyncState title="Loading customers" message="Fetching this organization's customers." />
       ) : parties.isError ? (
-        <AsyncState title="Customers unavailable" message={parties.error.message} />
+        <AsyncState tone="error" title="Customers unavailable" message={parties.error.message} />
       ) : parties.data.length === 0 ? (
         <AsyncState
           title={search ? 'No matches' : 'No customers yet'}

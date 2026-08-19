@@ -55,9 +55,9 @@ export function TrialBalancePage() {
       {!activeOrganizationId || report.isPending ? (
         <AsyncState title="Building Trial Balance" message="Summing posted debits and credits by account." />
       ) : report.isError ? (
-        <AsyncState title="Trial Balance unavailable" message={report.error.message} />
+        <AsyncState tone="error" title="Trial Balance unavailable" message={report.error.message} />
       ) : report.data.rows.length === 0 ? (
-        <AsyncState title="No posted balances" message="Post an invoice or choose a wider date range." />
+        <AsyncState tone="empty" title="No posted balances" message="Post an invoice or choose a wider date range." />
       ) : (
         <div className="report-surface">
           <div className="table-scroll">

@@ -97,7 +97,7 @@ export function ReceiptPage() {
     return <AsyncState title="Loading receipt workspace" message="Fetching customers and deposit accounts." />;
   }
   const loadError = parties.error ?? accounts.error;
-  if (loadError) return <AsyncState title="Receipt workspace unavailable" message={loadError.message} />;
+  if (loadError) return <AsyncState tone="error" title="Receipt workspace unavailable" message={loadError.message} />;
 
   const bankAccounts = accounts.data.filter((account) => account.isBankAccount && account.isActive);
   const canCreate = activeOrganization?.permissions?.includes('payment.create');
@@ -132,10 +132,10 @@ export function ReceiptPage() {
 
           <section className="report-surface receipt-allocation">
             <div className="section-heading"><div><h2>Allocate to invoices</h2><p>Leave part unallocated when the payment is an advance.</p></div></div>
-            {!form.partyId ? <AsyncState title="Choose a customer" message="Their open invoices will appear here." />
+            {!form.partyId ? <AsyncState tone="empty" title="Choose a customer" message="Their open invoices will appear here." />
               : invoices.isPending ? <AsyncState title="Loading open invoices" message="Checking outstanding balances." />
-                : invoices.isError ? <AsyncState title="Invoices unavailable" message={invoices.error.message} />
-                  : openInvoices.length === 0 ? <AsyncState title="No open invoices" message="This customer has nothing awaiting payment." />
+                : invoices.isError ? <AsyncState tone="error" title="Invoices unavailable" message={invoices.error.message} />
+                  : openInvoices.length === 0 ? <AsyncState tone="empty" title="No open invoices" message="This customer has nothing awaiting payment." />
                     : <div className="table-scroll"><table className="data-table"><thead><tr><th>Invoice</th><th>Due</th><th className="numeric">Outstanding</th><th className="numeric">Allocate</th></tr></thead><tbody>{openInvoices.map((invoice) => <tr key={invoice.id}><td>{invoice.docNo}</td><td>{invoice.dueDate ?? 'No due date'}</td><td className="numeric"><Money value={invoice.outstandingAmount} /></td><td className="numeric"><input className="allocation-input" inputMode="decimal" aria-label={`Allocate to ${invoice.docNo}`} value={allocations[invoice.id] ?? ''} onChange={(event) => { setAllocations((current) => ({ ...current, [invoice.id]: event.target.value })); setErrors((current) => ({ ...current, form: undefined })); }} /></td></tr>)}</tbody></table></div>}
             {errors.form && <div className="form-alert" role="alert">{errors.form}</div>}
           </section>

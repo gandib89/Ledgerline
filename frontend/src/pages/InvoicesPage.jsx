@@ -82,9 +82,9 @@ export function InvoicesPage() {
       {pending ? (
         <AsyncState title="Loading invoices" message="Fetching customers and invoice records." />
       ) : invoices.isError || parties.isError ? (
-        <AsyncState title="Invoices unavailable" message={(invoices.error ?? parties.error).message} />
+        <AsyncState tone="error" title="Invoices unavailable" message={(invoices.error ?? parties.error).message} />
       ) : invoices.data.length === 0 ? (
-        <AsyncState title="No invoices found" message="Change the filters or prepare the first invoice." action={<Link className="secondary-button button-link" to="/invoices/new">Create invoice</Link>} />
+        <AsyncState tone="empty" title="No invoices found" message="Change the filters or prepare the first invoice." action={<Link className="secondary-button button-link" to="/invoices/new">Create invoice</Link>} />
       ) : (
         <>
           <div className="table-scroll">

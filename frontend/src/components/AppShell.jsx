@@ -20,7 +20,7 @@ const navigation = [
   ['reports', 'Balance Sheet', '/reports/balance-sheet'],
   ['reports', 'Bank Reconciliation', '/reports/bank-reconciliation'],
   ['reports', 'Chart of accounts', '/accounts'],
-  ['audit', 'Audit trail'],
+  ['audit', 'Audit trail', '/audit'],
 ];
 
 export function AppShell() {
@@ -106,7 +106,7 @@ export function AppShell() {
             <span className="organization-kicker">Viewing books for</span>
             {organizations.isPending && <span className="organization-loading">Loading organizations…</span>}
             {organizations.isError && (
-              <AsyncState title="Organizations unavailable" message="Try refreshing this page." />
+              <AsyncState tone="error" title="Organizations unavailable" message="Try refreshing this page." />
             )}
             {organizations.data && (
               <select aria-label="Active organization" value={activeOrganizationId} onChange={changeOrganization}>

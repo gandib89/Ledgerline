@@ -105,7 +105,7 @@ export function InvoiceDetailPage() {
     return <AsyncState title="Loading invoice" message="Fetching the document and accounting references." />;
   }
   const loadError = invoice.error ?? parties.error ?? accounts.error;
-  if (loadError) return <AsyncState title="Invoice unavailable" message={loadError.message} />;
+  if (loadError) return <AsyncState tone="error" title="Invoice unavailable" message={loadError.message} />;
 
   const document = invoice.data;
   const customer = parties.data.find((party) => party.id === document.partyId);
@@ -158,7 +158,7 @@ export function InvoiceDetailPage() {
         {document.journalEntryId && journal.isPending ? (
           <AsyncState title="Loading journal" message="Opening the permanent ledger entry." />
         ) : journal.isError ? (
-          <AsyncState title="Journal unavailable" message={journal.error.message} />
+          <AsyncState tone="error" title="Journal unavailable" message={journal.error.message} />
         ) : <JournalPanel journal={displayedJournal} accountNames={accountNames} />}
       </div>
 
