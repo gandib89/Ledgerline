@@ -1,6 +1,8 @@
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
+import swaggerUi from 'swagger-ui-express';
+import { openApiDocument } from './openapi.js';
 import { randomUUID } from 'node:crypto';
 import { ZodError } from 'zod';
 import { env } from './env.js';
@@ -54,6 +56,13 @@ app.use(express.json({ limit: '1mb' }));
 app.get('/healthz', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
+
+// helmet's default CSP blocks Swagger UI's inline bootstrap script and
+// styles — relaxed only on this one docs path, not globally.
+app.use('/api/v1/docs', (req, res, next) => {
+  res.removeHeader('Content-Security-Policy');
+  next();
+}, swaggerUi.serve, swaggerUi.setup(openApiDocument));
 
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/orgs', orgsRouter);
