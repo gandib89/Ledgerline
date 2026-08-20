@@ -26,6 +26,7 @@ function invoice(document) {
   }
 
 
+  const taxByAccount = new Map();
   for (const docLine of document.lines) {
     if (!docLine.taxAccountId || isZero(docLine.taxAmount)) continue;
     taxByAccount.set(docLine.taxAccountId, add(taxByAccount.get(docLine.taxAccountId) ?? 0, docLine.taxAmount));
@@ -99,3 +100,4 @@ function bankAdjustment(document) {
 }
 
 export const POSTING_RULES = { invoice, manual, receipt, creditNote, bankAdjustment };
+

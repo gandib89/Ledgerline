@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/authenticate.js';
 import { resolveTenantFrom } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
 import { serializeOrganizationMembership } from './day3-contracts.js';
+import { provisionStarterKit, currentFiscalYearWindow } from '../lib/orgs/starter-kit.js';
 
 const router = Router();
 
@@ -75,6 +76,24 @@ router.post('/', authenticate, async (req, res, next) => {
     };
 
     res.status(201).json(serializeOrg(org));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// A brand-new organization has no fiscal year and no chart of accounts, so
+// it can never post anything (plan §5: COA is seeded, not user-built). The
+// onboarding UI calls this right after POST /, once, to provision the
+// standard starter kit. Deliberately a separate call rather than folded
+// into POST / — the test suite's makeUserWithOrg() helper creates its own
+// lean fixtures per org via that route, and a starter kit landing there
+// unconditionally would collide with them on account code.
+router.post('/:id/starter-kit', authenticate, resolveTenantFromPath, authorize('org.manage'), async (req, res, next) => {
+  try {
+    // A real org starts with whichever fiscal year covers today, not the
+    // plan's fixed demo anchor — see currentFiscalYearWindow().
+    await prisma.$transaction((tx) => provisionStarterKit(tx, req.organizationId, currentFiscalYearWindow()));
+    res.status(201).json({ provisioned: true });
   } catch (err) {
     next(err);
   }

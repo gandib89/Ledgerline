@@ -93,11 +93,16 @@ app.use((err, req, res, _next) => {
     });
   }
 
+  // err.status only exists on errors this app deliberately tagged (see
+  // accounting/errors.js's convention) — their .message is written to be
+  // shown to a client. Anything without it (a raw Prisma/JS exception, a
+  // real bug) is unexpected: its .message might describe internal schema
+  // or logic and must never reach the client, even though it's already
+  // logged above for debugging.
   res.status(err.status || 500).json({
-  error: {
+    error: {
       code: err.code || 'INTERNAL_ERROR',
-      message: err.message || 'Something went wrong',
-      // || just means "use this, but if it's empty, use that instead."
+      message: err.status ? (err.message || 'Something went wrong') : 'Something went wrong',
       requestId: req.id,
     },
   });

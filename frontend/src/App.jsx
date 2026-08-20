@@ -18,6 +18,7 @@ import { GeneralLedgerPage } from './pages/GeneralLedgerPage.jsx';
 import { ProfitLossPage } from './pages/ProfitLossPage.jsx';
 import { ReceiptPage } from './pages/ReceiptPage.jsx';
 import { AuditTrailPage } from './pages/AuditTrailPage.jsx';
+import { TeamPage } from './pages/TeamPage.jsx';
 
 function App() {
   return (
@@ -42,6 +43,7 @@ function App() {
           <Route path="/reports/balance-sheet" element={<BalanceSheetPage />} />
           <Route path="/reports/bank-reconciliation" element={<BankReconciliationPage />} />
           <Route path="/audit" element={<AuditTrailPage />} />
+          <Route path="/team" element={<TeamPage />} />
         </Route>
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

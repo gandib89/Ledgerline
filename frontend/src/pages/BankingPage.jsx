@@ -46,6 +46,8 @@ export function BankingPage() {
   const [accountByLine, setAccountByLine] = useState({});
   const [reasonByLine, setReasonByLine] = useState({});
   const [mobilePanel, setMobilePanel] = useState('statement');
+  const [bankDrawerOpen, setBankDrawerOpen] = useState(false);
+  const [bankForm, setBankForm] = useState({ accountId: '', bankName: '', accountNoMasked: '', openingBalance: '0' });
 
   const bankAccounts = useQuery({ queryKey: ['bank-accounts', activeOrganizationId], queryFn: () => apiRequest('/bank-accounts'), enabled: Boolean(activeOrganizationId) });
   const bankAccountId = selectedBankId || bankAccounts.data?.[0]?.id || '';
@@ -107,7 +109,36 @@ export function BankingPage() {
   const currentDifference = reconciliation?.difference ?? summary.data?.difference ?? '0.00';
   const canComplete = reconciliation?.status === 'in_progress' && unresolved === 0 && toCents(currentDifference) === 0n;
   const canReconcile = activeOrganization?.permissions?.includes('bank.reconcile');
+  const canManageOrg = activeOrganization?.permissions?.includes('org.manage');
   const otherAccounts = useMemo(() => accounts.data?.filter((account) => account.id !== bankAccount?.accountId && account.isActive) ?? [], [accounts.data, bankAccount?.accountId]);
+  // Only GL accounts flagged as bank accounts may back a BankAccount record
+  // (backend rejects anything else) — and one flagged account can only back
+  // one BankAccount record, so already-registered ones drop out here too.
+  const unregisteredBankGlAccounts = useMemo(
+    () => accounts.data?.filter((account) => account.isBankAccount && !bankAccounts.data?.some((b) => b.accountId === account.id)) ?? [],
+    [accounts.data, bankAccounts.data],
+  );
+
+  const createBankAccount = useMutation({
+    mutationFn: () => apiRequest('/bank-accounts', {
+      method: 'POST',
+      body: { ...bankForm, openingBalance: Number(bankForm.openingBalance || 0) },
+    }),
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ['bank-accounts'] });
+      notify({ title: 'Bank account added', message: `${created.bankName} ${created.accountNoMasked}`, tone: 'success' });
+      setSelectedBankId(created.id);
+      setBankDrawerOpen(false);
+      setBankForm({ accountId: '', bankName: '', accountNoMasked: '', openingBalance: '0' });
+    },
+    onError: (error) => notify({ title: 'Could not add bank account', message: error.message, tone: 'error' }),
+  });
+
+  function submitNewBankAccount(event) {
+    event.preventDefault();
+    if (!bankForm.accountId || !bankForm.bankName.trim() || !bankForm.accountNoMasked.trim()) return;
+    createBankAccount.mutate();
+  }
 
   async function chooseFile(event) {
     const next = event.target.files?.[0];
@@ -144,8 +175,14 @@ export function BankingPage() {
   if (loadError) return <AsyncState tone="error" title="Banking unavailable" message={loadError.message} />;
 
   return <div className="accounting-page banking-page">
-    <div className="page-heading"><div><p className="eyebrow">Banking</p><h1>Statement reconciliation</h1><p>Import bank activity, resolve every line, and close at zero difference.</p></div><label className="bank-selector">Bank account<select aria-label="Bank account" value={bankAccountId} onChange={(event) => { setSelectedBankId(event.target.value); setStatementId(''); setImportSummary(null); setReconciliation(null); }}>{bankAccounts.data.map((item) => <option key={item.id} value={item.id}>{item.bankName} {item.accountNoMasked}</option>)}</select></label></div>
-    {!bankAccountId ? <AsyncState tone="empty" title="No bank account configured" message="Create a bank account before importing a statement." /> : <>
+    <div className="page-heading">
+      <div><p className="eyebrow">Banking</p><h1>Statement reconciliation</h1><p>Import bank activity, resolve every line, and close at zero difference.</p></div>
+      <div className="banking-heading-actions">
+        {bankAccounts.data.length > 0 && <label className="bank-selector">Bank account<select aria-label="Bank account" value={bankAccountId} onChange={(event) => { setSelectedBankId(event.target.value); setStatementId(''); setImportSummary(null); setReconciliation(null); }}>{bankAccounts.data.map((item) => <option key={item.id} value={item.id}>{item.bankName} {item.accountNoMasked}</option>)}</select></label>}
+        {canManageOrg && <button className="secondary-button compact" type="button" onClick={() => setBankDrawerOpen(true)}>New bank account</button>}
+      </div>
+    </div>
+    {!bankAccountId ? <AsyncState tone="empty" title="No bank account configured" message={canManageOrg ? 'Add a bank account to start importing statements.' : 'Ask an organization owner to add a bank account.'} /> : <>
       <form className="statement-upload report-surface" onSubmit={submitImport}>
         <div className="section-heading"><div><h2>Import statement</h2><p>CSV only, maximum 2 MB. The import is all-or-nothing.</p></div></div>
         <label className="file-drop">Bank statement CSV<input aria-label="Bank statement CSV" type="file" accept=".csv,text/csv,application/vnd.ms-excel" onChange={chooseFile} /><span>{file?.name ?? 'Choose a CSV file'}</span></label>
@@ -166,6 +203,49 @@ export function BankingPage() {
         <div className={`reconciliation-footer ${toCents(currentDifference) === 0n ? 'reconciliation-zero' : ''}`}><div><span>Book</span><Money value={summary.data.bookBalance} /></div><div><span>Bank</span><Money value={summary.data.bankBalance} /></div><div><span>Difference</span><Money value={currentDifference} /></div><div><span>Unresolved</span><strong>{unresolved}</strong></div>{!reconciliation ? <button className="secondary-button" type="button" disabled={prepare.isPending || unresolved > 0} onClick={() => prepare.mutate()}>{prepare.isPending ? 'Preparing…' : 'Prepare reconciliation'}</button> : <button className="primary-button" type="button" disabled={!canComplete || complete.isPending} onClick={() => complete.mutate()}>{complete.isPending ? 'Completing…' : reconciliation.status === 'completed' ? 'Completed' : 'Complete reconciliation'}</button>}</div>
       </>}
     </>}
+    {bankDrawerOpen && (
+      <div className="drawer" role="dialog" aria-modal="true" aria-label="New bank account">
+        <form className="drawer-panel" onSubmit={submitNewBankAccount} noValidate>
+          <h2>New bank account</h2>
+
+          <label>
+            Ledger account
+            <select
+              autoFocus
+              value={bankForm.accountId}
+              onChange={(event) => setBankForm((current) => ({ ...current, accountId: event.target.value }))}
+            >
+              <option value="">Select account</option>
+              {unregisteredBankGlAccounts.map((account) => (
+                <option key={account.id} value={account.id}>{account.code} · {account.name}</option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Bank name
+            <input value={bankForm.bankName} onChange={(event) => setBankForm((current) => ({ ...current, bankName: event.target.value }))} />
+          </label>
+
+          <label>
+            Account number (masked)
+            <input value={bankForm.accountNoMasked} onChange={(event) => setBankForm((current) => ({ ...current, accountNoMasked: event.target.value }))} placeholder="****1234" />
+          </label>
+
+          <label>
+            Opening balance
+            <input type="number" step="0.01" value={bankForm.openingBalance} onChange={(event) => setBankForm((current) => ({ ...current, openingBalance: event.target.value }))} />
+          </label>
+
+          <div className="drawer-actions">
+            <button className="secondary-button" type="button" onClick={() => setBankDrawerOpen(false)}>Cancel</button>
+            <button className="primary-button" type="submit" disabled={createBankAccount.isPending}>
+              {createBankAccount.isPending ? 'Adding…' : 'Add bank account'}
+            </button>
+          </div>
+        </form>
+      </div>
+    )}
   </div>;
 }
 

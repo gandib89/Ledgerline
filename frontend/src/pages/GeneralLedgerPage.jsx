@@ -4,12 +4,13 @@ import { Link, useOutletContext } from 'react-router-dom';
 import { AsyncState } from '../components/AsyncState.jsx';
 import { Money } from '../components/Money.jsx';
 import { apiRequest } from '../lib/api-client.js';
+import { todayInNepal } from '../lib/date.js';
 
 export function GeneralLedgerPage() {
-  const { activeOrganizationId } = useOutletContext();
+  const { activeOrganizationId, currentFiscalYear } = useOutletContext();
   const [accountId, setAccountId] = useState('');
-  const [from, setFrom] = useState('2025-07-16');
-  const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
+  const [from, setFrom] = useState(currentFiscalYear?.startDate ?? '1900-01-01');
+  const [to, setTo] = useState(todayInNepal());
   const accounts = useQuery({ queryKey: ['accounts', activeOrganizationId], queryFn: () => apiRequest('/accounts'), enabled: Boolean(activeOrganizationId) });
   const ledger = useQuery({
     queryKey: ['general-ledger', activeOrganizationId, accountId, from, to],

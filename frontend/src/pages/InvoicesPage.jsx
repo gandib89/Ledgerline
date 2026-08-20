@@ -24,7 +24,8 @@ function listPath({ partyId, status, from, to, page }) {
 }
 
 export function InvoicesPage() {
-  const { activeOrganizationId } = useOutletContext();
+  const { activeOrganizationId, activeOrganization } = useOutletContext();
+  const canCreate = Boolean(activeOrganization?.permissions?.includes('invoice.create'));
   const [filters, setFilters] = useState({ partyId: '', status: '', from: '', to: '', page: 1 });
   const parties = useQuery({
     queryKey: ['parties', activeOrganizationId, 'invoice-selector'],
@@ -55,7 +56,7 @@ export function InvoicesPage() {
           <h1>Invoices</h1>
           <p>Prepare customer invoices, track what remains due, and open the accounting entry.</p>
         </div>
-        <Link className="primary-button button-link" to="/invoices/new">New invoice</Link>
+        {canCreate && <Link className="primary-button button-link" to="/invoices/new">New invoice</Link>}
       </div>
 
       <section className="filter-bar" aria-label="Invoice filters">
@@ -84,7 +85,12 @@ export function InvoicesPage() {
       ) : invoices.isError || parties.isError ? (
         <AsyncState tone="error" title="Invoices unavailable" message={(invoices.error ?? parties.error).message} />
       ) : invoices.data.length === 0 ? (
-        <AsyncState tone="empty" title="No invoices found" message="Change the filters or prepare the first invoice." action={<Link className="secondary-button button-link" to="/invoices/new">Create invoice</Link>} />
+        <AsyncState
+          tone="empty"
+          title="No invoices found"
+          message={canCreate ? 'Change the filters or prepare the first invoice.' : 'Change the filters — no invoices match yet.'}
+          action={canCreate ? <Link className="secondary-button button-link" to="/invoices/new">Create invoice</Link> : null}
+        />
       ) : (
         <>
           <div className="table-scroll">

@@ -10,6 +10,7 @@ import { findFiscalYearForDate } from '../lib/accounting/fiscal-year.js';
 import { computeBookBalance } from '../lib/banking/reconciliation-service.js';
 import { dec, add, sub, eq, isZero } from '../lib/money.js';
 import { reportLimiter } from '../lib/rate-limit.js';
+import { todayInNepal } from '../lib/nepal-date.js';
 
 const router = Router();
 router.use(authenticate, resolveTenant, reportLimiter);
@@ -30,7 +31,7 @@ router.get('/reports/trial-balance', authorize('report.view'), async (req, res, 
       from: z.string().regex(DATE_RE).optional(),
     }).parse(req.query);
 
-    const asOf = query.asOf ?? new Date().toISOString().slice(0, 10);
+    const asOf = query.asOf ?? todayInNepal();
     const from = query.from ?? '1900-01-01';
 
     const rows = await prisma.$queryRaw`
@@ -100,7 +101,7 @@ function bucketFor(daysOverdue) {
 router.get('/reports/ar-aging', authorize('report.view'), async (req, res, next) => {
   try {
     const query = z.object({ asOf: z.string().regex(DATE_RE).optional() }).parse(req.query);
-    const asOf = query.asOf ?? new Date().toISOString().slice(0, 10);
+    const asOf = query.asOf ?? todayInNepal();
     const asOfDate = new Date(asOf);
 
     const openInvoices = await prisma.document.findMany({
@@ -183,7 +184,7 @@ router.get('/reports/general-ledger', authorize('report.view'), async (req, res,
     if (!account) throw notFound('Account not found');
 
     const from = query.from ?? '1900-01-01';
-    const to = query.to ?? new Date().toISOString().slice(0, 10);
+    const to = query.to ?? todayInNepal();
     const debitNormal = ['ASSET', 'EXPENSE'].includes(account.type);
 
     const [opening] = await prisma.$queryRaw`
@@ -285,7 +286,7 @@ async function computeProfitAndLoss(organizationId, from, to) {
 router.get('/reports/profit-loss', authorize('report.view'), async (req, res, next) => {
   try {
     const query = z.object({ from: z.string().regex(DATE_RE).optional(), to: z.string().regex(DATE_RE).optional() }).parse(req.query);
-    const to = query.to ?? new Date().toISOString().slice(0, 10);
+    const to = query.to ?? todayInNepal();
     const from = query.from ?? (await findFiscalYearForDate(prisma, req.organizationId, new Date(to))).startDate.toISOString().slice(0, 10);
 
     const { revenue, revenueTotal, expense, expenseTotal, netProfit } = await computeProfitAndLoss(req.organizationId, from, to);
@@ -308,7 +309,7 @@ router.get('/reports/profit-loss', authorize('report.view'), async (req, res, ne
 router.get('/reports/balance-sheet', authorize('report.view'), async (req, res, next) => {
   try {
     const query = z.object({ asOf: z.string().regex(DATE_RE).optional() }).parse(req.query);
-    const asOf = query.asOf ?? new Date().toISOString().slice(0, 10);
+    const asOf = query.asOf ?? todayInNepal();
 
     const rows = await prisma.$queryRaw`
       SELECT a.code, a.name, a.type, SUM(jl.debit) AS total_debit, SUM(jl.credit) AS total_credit
