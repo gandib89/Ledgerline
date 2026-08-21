@@ -211,6 +211,26 @@ router.post('/bank-accounts/:id/statements', authorize('bank.reconcile'), csvImp
   }
 });
 
+// Lets the UI resume the reconciliation workspace after a navigation or
+// reload — without this, a statement was only reachable in the same
+// browser session as its own upload, via the client-side statementId the
+// import response set.
+router.get('/bank-accounts/:id/statements', authorize('report.view'), async (req, res, next) => {
+  try {
+    const id = z.string().uuid().parse(req.params.id);
+    const bankAccount = await prisma.bankAccount.findFirst({ where: { id, organizationId: req.organizationId } });
+    if (!bankAccount) throw notFound('Bank account not found');
+
+    const statements = await prisma.bankStatement.findMany({
+      where: { bankAccountId: id },
+      orderBy: { importedAt: 'desc' },
+    });
+    res.json(statements.map((s) => serializeStatement(s)));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/statements/:id/lines', authorize('report.view'), async (req, res, next) => {
   try {
     const id = z.string().uuid().parse(req.params.id);

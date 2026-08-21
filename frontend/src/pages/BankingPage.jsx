@@ -39,7 +39,7 @@ export function BankingPage() {
   const [headers, setHeaders] = useState([]);
   const [mapping, setMapping] = useState({ dateFormat: 'YYYY-MM-DD', columns: { date: '', description: '', reference: '', debit: '', credit: '', amount: '', balance: '' } });
   const [fileError, setFileError] = useState('');
-  const [statementId, setStatementId] = useState('');
+  const [selectedStatementId, setSelectedStatementId] = useState('');
   const [importSummary, setImportSummary] = useState(null);
   const [reconciliation, setReconciliation] = useState(null);
   const [candidateByLine, setCandidateByLine] = useState({});
@@ -53,6 +53,15 @@ export function BankingPage() {
   const bankAccountId = selectedBankId || bankAccounts.data?.[0]?.id || '';
   const bankAccount = bankAccounts.data?.find(({ id }) => id === bankAccountId);
   const accounts = useQuery({ queryKey: ['accounts', activeOrganizationId], queryFn: () => apiRequest('/accounts'), enabled: Boolean(activeOrganizationId) });
+  // Same resolve-to-latest pattern as bankAccountId above — lets the
+  // workspace resume the most recent import after a navigation or reload,
+  // instead of only being reachable in the same session as its own upload.
+  const bankStatements = useQuery({
+    queryKey: ['bank-statements', activeOrganizationId, bankAccountId],
+    queryFn: () => apiRequest(`/bank-accounts/${bankAccountId}/statements`),
+    enabled: Boolean(activeOrganizationId && bankAccountId),
+  });
+  const statementId = selectedStatementId || bankStatements.data?.[0]?.id || '';
   const statement = useQuery({ queryKey: ['bank-statement', activeOrganizationId, statementId], queryFn: () => apiRequest(`/statements/${statementId}/lines`), enabled: Boolean(activeOrganizationId && statementId) });
   const ledgerMovements = useQuery({
     queryKey: ['bank-ledger-movements', activeOrganizationId, bankAccount?.accountId],
@@ -72,7 +81,12 @@ export function BankingPage() {
       body.append('columnMapping', JSON.stringify(mapping));
       return apiRequest(`/bank-accounts/${bankAccountId}/statements`, { method: 'POST', body });
     },
-    onSuccess: (data) => { setImportSummary(data); setStatementId(data.statement.id); notify({ title: 'Statement imported', message: `${data.imported} lines are ready for reconciliation.`, tone: 'success' }); },
+    onSuccess: (data) => {
+      setImportSummary(data);
+      setSelectedStatementId(data.statement.id);
+      queryClient.invalidateQueries({ queryKey: ['bank-statements'] });
+      notify({ title: 'Statement imported', message: `${data.imported} lines are ready for reconciliation.`, tone: 'success' });
+    },
     onError: (error) => setFileError(error.message),
   });
 
@@ -170,7 +184,12 @@ export function BankingPage() {
     }
   }
 
-  if (bankAccounts.isPending || accounts.isPending) return <AsyncState title="Loading banking workspace" message="Fetching bank and ledger accounts." />;
+  // bankStatements is disabled (permanently isPending) when there's no bank
+  // account yet — only count it once it actually has one to wait for, or a
+  // brand-new org would be stuck on this loading state forever.
+  if (bankAccounts.isPending || accounts.isPending || (bankAccountId && bankStatements.isPending)) {
+    return <AsyncState title="Loading banking workspace" message="Fetching bank and ledger accounts." />;
+  }
   const loadError = bankAccounts.error ?? accounts.error;
   if (loadError) return <AsyncState tone="error" title="Banking unavailable" message={loadError.message} />;
 
@@ -178,7 +197,7 @@ export function BankingPage() {
     <div className="page-heading">
       <div><p className="eyebrow">Banking</p><h1>Statement reconciliation</h1><p>Import bank activity, resolve every line, and close at zero difference.</p></div>
       <div className="banking-heading-actions">
-        {bankAccounts.data.length > 0 && <label className="bank-selector">Bank account<select aria-label="Bank account" value={bankAccountId} onChange={(event) => { setSelectedBankId(event.target.value); setStatementId(''); setImportSummary(null); setReconciliation(null); }}>{bankAccounts.data.map((item) => <option key={item.id} value={item.id}>{item.bankName} {item.accountNoMasked}</option>)}</select></label>}
+        {bankAccounts.data.length > 0 && <label className="bank-selector">Bank account<select aria-label="Bank account" value={bankAccountId} onChange={(event) => { setSelectedBankId(event.target.value); setSelectedStatementId(''); setImportSummary(null); setReconciliation(null); }}>{bankAccounts.data.map((item) => <option key={item.id} value={item.id}>{item.bankName} {item.accountNoMasked}</option>)}</select></label>}
         {canManageOrg && <button className="secondary-button compact" type="button" onClick={() => setBankDrawerOpen(true)}>New bank account</button>}
       </div>
     </div>
