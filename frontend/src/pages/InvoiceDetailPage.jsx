@@ -125,6 +125,7 @@ export function InvoiceDetailPage() {
           <Link className="secondary-button button-link" to="/invoices">Back to invoices</Link>
           {document.status === 'draft' && <Link className="secondary-button button-link" to={`/invoices/${id}/edit`}>Edit draft</Link>}
           {document.status === 'draft' && canPost && <button className="primary-button" type="button" onClick={() => setConfirming(true)}>Post invoice</button>}
+          {['posted', 'partially_paid', 'paid'].includes(document.status) && canPost && <Link className="primary-button button-link" to={`/invoices/${id}/credit-note`}>Issue credit note</Link>}
         </div>
       </div>
 

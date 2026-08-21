@@ -18,6 +18,11 @@ import { GeneralLedgerPage } from './pages/GeneralLedgerPage.jsx';
 import { ProfitLossPage } from './pages/ProfitLossPage.jsx';
 import { ReceiptPage } from './pages/ReceiptPage.jsx';
 import { AuditTrailPage } from './pages/AuditTrailPage.jsx';
+import { SettingsPage } from './pages/SettingsPage.jsx';
+import { JournalEntriesPage } from './pages/JournalEntriesPage.jsx';
+import { CreditNotePage } from './pages/CreditNotePage.jsx';
+import { CreditNoteDetailPage } from './pages/CreditNoteDetailPage.jsx';
+import { ReceiptDetailPage } from './pages/ReceiptDetailPage.jsx';
 
 function App() {
   return (
@@ -33,7 +38,11 @@ function App() {
           <Route path="/invoices/new" element={<InvoiceEditorPage />} />
           <Route path="/invoices/:id/edit" element={<InvoiceEditorPage />} />
           <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+          <Route path="/invoices/:invoiceId/credit-note" element={<CreditNotePage />} />
+          <Route path="/credit-notes/:id" element={<CreditNoteDetailPage />} />
           <Route path="/receipts" element={<ReceiptPage />} />
+          <Route path="/receipts/:id" element={<ReceiptDetailPage />} />
+          <Route path="/journals" element={<JournalEntriesPage />} />
           <Route path="/banking" element={<BankingPage />} />
           <Route path="/reports/trial-balance" element={<TrialBalancePage />} />
           <Route path="/reports/general-ledger" element={<GeneralLedgerPage />} />
@@ -42,6 +51,7 @@ function App() {
           <Route path="/reports/balance-sheet" element={<BalanceSheetPage />} />
           <Route path="/reports/bank-reconciliation" element={<BankReconciliationPage />} />
           <Route path="/audit" element={<AuditTrailPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -114,6 +114,7 @@ export function ReceiptPage() {
           <div><span>Receipt posted</span><h2>{result.receipt.docNo}</h2><p>{result.allocations.length} invoice allocation{result.allocations.length === 1 ? '' : 's'} recorded.</p></div>
           <dl className="receipt-summary"><div><dt>Received</dt><dd><Money value={result.receipt.grandTotal} /></dd></div><div><dt>Allocated</dt><dd><Money value={result.receipt.allocatedAmount} /></dd></div><div><dt>Unallocated</dt><dd><Money value={result.receipt.outstandingAmount} /></dd></div></dl>
           <span className={`balance-result ${journalIsBalanced(result.journalEntry) ? 'balance-ok' : 'balance-error'}`}>{journalIsBalanced(result.journalEntry) ? 'Debits equal credits' : 'Journal difference detected'}</span>
+          <Link className="primary-button button-link" to={`/receipts/${result.receipt.id}`}>Open receipt</Link>
           <button className="secondary-button" type="button" onClick={() => { setResult(null); setForm(emptyForm); setAllocations({}); }}>Record another receipt</button>
         </section>
       ) : (

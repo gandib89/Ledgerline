@@ -49,6 +49,18 @@ function asDate(value) {
   return value.toISOString().slice(0, 10);
 }
 
+router.get('/roles', authorize('org.manage'), async (_req, res, next) => {
+  try {
+    const roles = await prisma.role.findMany({
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    });
+    res.json(roles);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/accounts', authorize('report.view'), async (req, res, next) => {
   try {
     const type = z.enum(ACCOUNT_TYPES).optional().parse(req.query.type);

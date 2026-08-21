@@ -40,6 +40,22 @@ beforeAll(async () => {
 afterAll(() => prisma.$disconnect());
 
 describe('permissions', () => {
+  it('lists assignable roles for Owners and rejects Viewers', async () => {
+    const allowed = await request(app).get('/api/v1/roles').set(owner.headers);
+
+    expect(allowed.status).toBe(200);
+    expect(allowed.body).toEqual([
+      expect.objectContaining({ id: roles.Accountant.id, name: 'Accountant' }),
+      expect.objectContaining({ id: roles.Clerk.id, name: 'Clerk' }),
+      expect.objectContaining({ id: roles.Owner.id, name: 'Owner' }),
+      expect.objectContaining({ id: roles.Viewer.id, name: 'Viewer' }),
+    ]);
+
+    const denied = await request(app).get('/api/v1/roles').set(members.Viewer);
+    expect(denied.status).toBe(403);
+    expect(denied.body.error.code).toBe('forbidden');
+  });
+
   it('returns the current role and permission codes with each organization', async () => {
     const res = await request(app).get('/api/v1/orgs').set(owner.authOnly);
 

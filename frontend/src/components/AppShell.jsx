@@ -6,12 +6,14 @@ import { apiRequest, setActiveOrganization } from '../lib/api-client.js';
 import { AsyncState } from './AsyncState.jsx';
 import { Icon } from './Icon.jsx';
 import { useToast } from './toast-context.js';
+import { OrganizationCreator } from './OrganizationCreator.jsx';
 
 const navigation = [
   ['dashboard', 'Dashboard', '/dashboard'],
   ['customers', 'Customers', '/customers'],
   ['invoices', 'Invoices', '/invoices'],
   ['receipts', 'Receipts', '/receipts'],
+  ['journals', 'Journal entries', '/journals'],
   ['banking', 'Banking', '/banking'],
   ['reports', 'Trial Balance', '/reports/trial-balance'],
   ['reports', 'General Ledger', '/reports/general-ledger'],
@@ -21,6 +23,7 @@ const navigation = [
   ['reports', 'Bank Reconciliation', '/reports/bank-reconciliation'],
   ['reports', 'Chart of accounts', '/accounts'],
   ['audit', 'Audit trail', '/audit'],
+  ['settings', 'Settings', '/settings'],
 ];
 
 export function AppShell() {
@@ -36,6 +39,12 @@ export function AppShell() {
   });
   const activeOrganizationId = selectedOrganizationId || organizations.data?.[0]?.id || '';
   const activeOrganization = organizations.data?.find(({ id }) => id === activeOrganizationId) ?? null;
+  const fiscalYears = useQuery({
+    queryKey: ['fiscal-years', activeOrganizationId],
+    queryFn: () => apiRequest('/fiscal-years'),
+    enabled: Boolean(activeOrganizationId),
+  });
+  const fiscalLabel = fiscalYears.data?.find(({ isClosed }) => !isClosed)?.label ?? fiscalYears.data?.[0]?.label ?? 'Fiscal year';
 
   useEffect(() => {
     if (activeOrganizationId) setActiveOrganization(activeOrganizationId);
@@ -118,7 +127,7 @@ export function AppShell() {
           </div>
 
           <div className="topbar-meta">
-            <span className="fiscal-pill">FY 2082/83</span>
+            <span className="fiscal-pill">{fiscalLabel}</span>
             <div className="user-summary">
               <span className="user-avatar" aria-hidden="true">{user?.email?.slice(0, 1).toUpperCase() ?? 'A'}</span>
               <span><strong>{user?.email ?? 'Account user'}</strong><small>Secure session</small></span>
@@ -128,7 +137,9 @@ export function AppShell() {
         </header>
 
         <main className="app-content" id="main-content" tabIndex="-1">
-          <Outlet context={{ activeOrganizationId, activeOrganization }} />
+          {organizations.data?.length === 0
+            ? <OrganizationCreator first onCreated={(organization) => setSelectedOrganizationId(organization.id)} />
+            : <Outlet context={{ activeOrganizationId, activeOrganization }} />}
         </main>
       </div>
     </div>

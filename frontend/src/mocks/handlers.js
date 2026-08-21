@@ -6,8 +6,8 @@ export const demoUser = {
 };
 
 export const demoOrganizations = [
-  { id: 'org-annapurna', name: 'Annapurna Trading Pvt. Ltd.', isActive: true, role: { id: 'role-owner', name: 'Owner' }, permissions: ['invoice.create', 'invoice.post', 'payment.create', 'bank.reconcile', 'report.view', 'audit.view', 'org.manage'] },
-  { id: 'org-sherpa', name: 'Sherpa Ventures Pvt. Ltd.', isActive: true, role: { id: 'role-owner', name: 'Owner' }, permissions: ['invoice.create', 'invoice.post', 'payment.create', 'bank.reconcile', 'report.view', 'audit.view', 'org.manage'] },
+  { id: 'org-annapurna', name: 'Annapurna Trading Pvt. Ltd.', isActive: true, role: { id: 'role-owner', name: 'Owner' }, permissions: ['invoice.create', 'invoice.post', 'payment.create', 'journal.post', 'bank.reconcile', 'report.view', 'audit.view', 'org.manage'] },
+  { id: 'org-sherpa', name: 'Sherpa Ventures Pvt. Ltd.', isActive: true, role: { id: 'role-owner', name: 'Owner' }, permissions: ['invoice.create', 'invoice.post', 'payment.create', 'journal.post', 'bank.reconcile', 'report.view', 'audit.view', 'org.manage'] },
 ];
 
 const demoParties = [
@@ -87,6 +87,26 @@ const demoInvoices = [{
 
 const demoJournals = new Map();
 const demoPayments = new Map();
+const demoReceipts = new Map();
+const demoCreditNotes = new Map();
+const demoRoles = [
+  { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: 'Accountant' },
+  { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', name: 'Owner' },
+  { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Viewer' },
+];
+const demoMembers = [{
+  id: 'member-owner', user: demoUser, role: demoRoles[1], isActive: true,
+}];
+const demoFiscalYears = [{
+  id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', label: 'FY 2082/83', startDate: '2025-07-16', endDate: '2026-07-15', isClosed: false,
+}];
+const demoPeriods = [{
+  id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', fiscalYearId: demoFiscalYears[0].id,
+  label: 'Shrawan 2082', startDate: '2025-07-16', endDate: '2025-08-16', isOpen: true,
+}, {
+  id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', fiscalYearId: demoFiscalYears[0].id,
+  label: 'Bhadra 2082', startDate: '2025-08-17', endDate: '2025-09-16', isOpen: true,
+}];
 const demoBankAccounts = [{
   id: '55555555-5555-4555-8555-555555555555',
   accountId: demoAccounts[4].id,
@@ -186,6 +206,28 @@ export const handlers = [
 
   http.get('/api/v1/orgs', () => ok(demoOrganizations)),
 
+  http.post('/api/v1/orgs', async ({ request }) => {
+    const { name } = await request.json();
+    const organization = {
+      id: globalThis.crypto.randomUUID(), name, isActive: true,
+      role: { id: demoRoles[1].id, name: 'Owner' }, permissions: [...demoOrganizations[0].permissions],
+    };
+    demoOrganizations.push(organization);
+    return ok({ id: organization.id, name, isActive: true, createdAt: new Date().toISOString() }, { status: 201 });
+  }),
+
+  http.get('/api/v1/orgs/:id/members', () => ok(demoMembers)),
+
+  http.post('/api/v1/orgs/:id/members', async ({ request }) => {
+    const input = await request.json();
+    const role = demoRoles.find(({ id }) => id === input.roleId);
+    const membership = { id: globalThis.crypto.randomUUID(), user: { id: globalThis.crypto.randomUUID(), email: input.email }, role, isActive: true };
+    demoMembers.push(membership);
+    return ok(membership, { status: 201 });
+  }),
+
+  http.get('/api/v1/roles', () => ok(demoRoles)),
+
   http.get('/api/v1/audit-log', ({ request }) => {
     const params = new URL(request.url).searchParams;
     const records = [{
@@ -225,6 +267,27 @@ export const handlers = [
   http.get('/api/v1/accounts', ({ request }) => {
     const type = new URL(request.url).searchParams.get('type');
     return ok(type ? demoAccounts.filter((account) => account.type === type) : demoAccounts);
+  }),
+
+  http.post('/api/v1/accounts', async ({ request }) => {
+    const input = await request.json();
+    const account = { id: globalThis.crypto.randomUUID(), ...input, isControlAccount: false, isBankAccount: false, isActive: true };
+    demoAccounts.push(account);
+    return ok(account, { status: 201 });
+  }),
+
+  http.get('/api/v1/fiscal-years', () => ok(demoFiscalYears)),
+
+  http.get('/api/v1/periods', ({ request }) => {
+    const fiscalYearId = new URL(request.url).searchParams.get('fiscalYearId');
+    return ok(fiscalYearId ? demoPeriods.filter((period) => period.fiscalYearId === fiscalYearId) : demoPeriods);
+  }),
+
+  http.patch('/api/v1/periods/:id', async ({ params, request }) => {
+    const period = demoPeriods.find(({ id }) => id === params.id);
+    if (!period) return fail('not_found', 'Accounting period not found', 404);
+    Object.assign(period, await request.json());
+    return ok(period);
   }),
 
   http.get('/api/v1/tax-codes', () => ok(demoTaxCodes)),
@@ -319,6 +382,36 @@ export const handlers = [
   http.get('/api/v1/journal-entries', () => ok([...demoJournals.values()].map((entry) =>
     Object.fromEntries(Object.entries(entry).filter(([key]) => key !== 'lines'))))),
 
+  http.post('/api/v1/journal-entries', async ({ request }) => {
+    const input = await request.json();
+    const id = globalThis.crypto.randomUUID();
+    const entry = {
+      id, entryNumber: `JE-2082-${String(demoJournals.size + 1).padStart(4, '0')}`,
+      documentType: 'MANUAL', entryDate: input.entryDate, description: input.narration,
+      status: 'posted', sourceId: null, reversalOfId: null, postedAt: new Date().toISOString(),
+      lines: input.lines.map((line, index) => ({ id: globalThis.crypto.randomUUID(), ...line, partyId: null, lineNumber: index + 1, debit: money(line.debit), credit: money(line.credit) })),
+    };
+    demoJournals.set(id, entry);
+    return ok(entry, { status: 201 });
+  }),
+
+  http.post('/api/v1/journal-entries/:id/reverse', async ({ params, request }) => {
+    const original = demoJournals.get(params.id);
+    if (!original) return fail('not_found', 'Journal entry not found', 404);
+    if (original.status !== 'posted') return fail('already_reversed', 'This journal entry is already reversed', 409);
+    const input = await request.json();
+    original.status = 'reversed';
+    const reversal = {
+      ...original, id: globalThis.crypto.randomUUID(),
+      entryNumber: `JE-2082-${String(demoJournals.size + 1).padStart(4, '0')}`,
+      entryDate: input.reversalDate || new Date().toISOString().slice(0, 10),
+      description: `Reversal: ${input.reason}`, status: 'posted', reversalOfId: original.id,
+      lines: original.lines.map((line, index) => ({ ...line, id: globalThis.crypto.randomUUID(), lineNumber: index + 1, debit: line.credit, credit: line.debit })),
+    };
+    demoJournals.set(reversal.id, reversal);
+    return ok({ original, reversal });
+  }),
+
   http.post('/api/v1/receipts', async ({ request }) => {
     const input = await request.json();
     const allocatedAmount = input.allocations.reduce((total, allocation) => total + Number(allocation.amount), 0);
@@ -368,7 +461,48 @@ export const handlers = [
       ],
     };
     demoJournals.set(journalEntryId, journalEntry);
+    demoReceipts.set(receiptId, { ...receipt, allocations });
     return ok({ receipt, allocations, journalEntry }, { status: 201 });
+  }),
+
+  http.get('/api/v1/receipts/:id', ({ params }) => {
+    const receipt = demoReceipts.get(params.id);
+    return receipt ? ok(receipt) : fail('not_found', 'Receipt not found', 404);
+  }),
+
+  http.post('/api/v1/credit-notes', async ({ request }) => {
+    const input = await request.json();
+    const invoice = demoInvoices.find(({ id }) => id === input.invoiceId);
+    if (!invoice) return fail('not_found', 'Invoice not found', 404);
+    const calculated = calculateInvoice(input.lines);
+    const creditId = globalThis.crypto.randomUUID();
+    const journalEntryId = globalThis.crypto.randomUUID();
+    const creditNote = {
+      id: creditId, docType: 'credit_note', docNo: `CRN-2082-${String(demoCreditNotes.size + 1).padStart(4, '0')}`,
+      docDate: input.docDate, partyId: invoice.partyId, parentDocumentId: invoice.id, status: 'posted',
+      referenceNo: input.referenceNo || null, notes: input.notes || null, ...calculated.totals,
+      journalEntryId, lines: calculated.lines,
+    };
+    invoice.outstandingAmount = money(Math.max(0, Number(invoice.outstandingAmount) - Number(creditNote.grandTotal)));
+    if (Number(invoice.outstandingAmount) === 0) invoice.status = 'paid';
+    const journalEntry = {
+      id: journalEntryId, entryNumber: `JE-2082-${String(demoJournals.size + 1).padStart(4, '0')}`,
+      documentType: 'CREDIT_NOTE', entryDate: input.docDate, description: `Credit note ${creditNote.docNo}`,
+      status: 'posted', sourceId: creditId, reversalOfId: null,
+      lines: [
+        { id: globalThis.crypto.randomUUID(), accountId: demoAccounts[1].id, debit: creditNote.taxableAmount, credit: '0.00', description: 'Revenue reversed', lineNumber: 1 },
+        { id: globalThis.crypto.randomUUID(), accountId: demoAccounts[3].id, debit: creditNote.taxAmount, credit: '0.00', description: 'VAT reversed', lineNumber: 2 },
+        { id: globalThis.crypto.randomUUID(), accountId: demoAccounts[0].id, debit: '0.00', credit: creditNote.grandTotal, description: 'Customer receivable reduced', lineNumber: 3 },
+      ],
+    };
+    demoCreditNotes.set(creditId, creditNote);
+    demoJournals.set(journalEntryId, journalEntry);
+    return ok({ creditNote, journalEntry, invoiceOutstandingAfter: invoice.outstandingAmount }, { status: 201 });
+  }),
+
+  http.get('/api/v1/credit-notes/:id', ({ params }) => {
+    const creditNote = demoCreditNotes.get(params.id);
+    return creditNote ? ok(creditNote) : fail('not_found', 'Credit note not found', 404);
   }),
 
   http.get('/api/v1/invoices/:id/payments', ({ params }) => {
@@ -444,6 +578,13 @@ export const handlers = [
   })),
 
   http.get('/api/v1/bank-accounts', () => ok(demoBankAccounts)),
+
+  http.post('/api/v1/bank-accounts', async ({ request }) => {
+    const input = await request.json();
+    const bankAccount = { id: globalThis.crypto.randomUUID(), ...input, openingBalance: money(input.openingBalance), isActive: true };
+    demoBankAccounts.push(bankAccount);
+    return ok(bankAccount, { status: 201 });
+  }),
 
   http.post('/api/v1/bank-accounts/:id/statements', ({ params }) => {
     if (!demoBankAccounts.some(({ id }) => id === params.id)) return fail('not_found', 'Bank account not found', 404);

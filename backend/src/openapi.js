@@ -70,10 +70,21 @@ registry.registerPath({
   security: AUTH, request: { params: z.object({ id: uuid() }), body: { content: { 'application/json': { schema: z.object({ email: z.string().email(), roleId: uuid() }) } } } },
   responses: { 201: { description: 'Created' }, 403: errorResponse },
 });
+registry.registerPath({
+  method: 'get', path: '/api/v1/orgs/{id}/members', tags: ['Organizations'], summary: 'List organization members',
+  security: AUTH, request: { params: z.object({ id: uuid() }) },
+  responses: { 200: { description: 'OK', ...json(z.array(z.object({ id: uuid(), user: authUser, role: z.object({ id: uuid(), name: z.string() }), isActive: z.boolean() }))) }, 403: errorResponse },
+});
 
 // ---- masters ----------------------------------------------------------------
 const account = z.object({ id: uuid(), code: z.string(), name: z.string(), type: z.enum(['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE']), isControlAccount: z.boolean(), isBankAccount: z.boolean() });
 const party = z.object({ id: uuid(), type: z.enum(['CUSTOMER', 'VENDOR']), code: z.string(), name: z.string(), creditDays: z.number().optional() });
+
+registry.registerPath({
+  method: 'get', path: '/api/v1/roles', tags: ['Masters'], summary: 'List assignable organization roles',
+  security: AUTH, request: { headers: tenantParams },
+  responses: { 200: { description: 'OK', ...json(z.array(z.object({ id: uuid(), name: z.string() }))) }, 403: errorResponse },
+});
 
 registry.registerPath({
   method: 'get', path: '/api/v1/accounts', tags: ['Masters'], summary: 'List chart-of-accounts',
