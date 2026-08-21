@@ -1,19 +1,10 @@
 import { add, dec, isZero } from '../money.js';
 
-// One journal line. Only Dr AR / Dr Bank lines carry partyId — everything
-// else is GL-only (§6: "The AR and Bank lines carry party_id").
 function line({ accountId, debit = 0, credit = 0, description, partyId = null }) {
   return { accountId, debit: dec(debit), credit: dec(credit), description, partyId };
 }
 
-// (document) => JournalLine[]. Pure: no I/O, no clock, no randomness — the
-// caller resolves every account id (AR control account, each line's tax
-// output account) before calling in. That is what makes this trivially
-// unit-testable and is the entire point (§6).
-//
-// Expected `document` shape:
-//   { partyId, grandTotal, arAccountId,
-//     lines: [{ accountId, taxableAmount, taxAmount, taxAccountId, description }] }
+
 function invoice(document) {
   const lines = [
     line({
@@ -34,9 +25,7 @@ function invoice(document) {
     );
   }
 
-  // Multiple document lines can share one tax output account (e.g. every
-  // 13%-VAT line posts to the same 2200 account) — group so the entry
-  // carries one VAT credit per account, not one per invoice line.
+
   const taxByAccount = new Map();
   for (const docLine of document.lines) {
     if (!docLine.taxAccountId || isZero(docLine.taxAmount)) continue;
@@ -49,10 +38,7 @@ function invoice(document) {
   return lines.map((l, i) => ({ ...l, lineNumber: i + 1 }));
 }
 
-// User-supplied lines, passed straight through. Control-account blocking
-// (PERM-6) and balance are enforced by the caller/guards and by
-// postDocument's own assertion — this rule trusts its input, same as every
-// other pure rule.
+
 function manual(document) {
   return document.lines.map((docLine, i) => ({
     accountId: docLine.accountId,
@@ -64,10 +50,6 @@ function manual(document) {
   }));
 }
 
-// Dr Bank/Cash (amount) / Cr AR (amount, carries partyId) — §6 posting rule
-// table. Receipts have no per-line tax; the whole thing is one amount.
-//
-// Expected shape: { depositAccountId, arAccountId, partyId, amount }
 function receipt(document) {
   const lines = [
     line({ accountId: document.depositAccountId, debit: document.amount, description: 'Customer receipt' }),
@@ -76,12 +58,7 @@ function receipt(document) {
   return lines.map((l, i) => ({ ...l, lineNumber: i + 1 }));
 }
 
-// Mirror image of invoice(): revenue and VAT move to the debit side, AR
-// moves to the credit side (§6 posting rule table — "Credit note: Debit
-// Sales Revenue (taxable); VAT Payable (tax) / Credit Accounts Receivable").
-//
-// Expected shape: same as invoice() — { partyId, grandTotal, arAccountId,
-// lines: [{ accountId, taxableAmount, taxAmount, taxAccountId, description }] }
+
 function creditNote(document) {
   const lines = [];
 
@@ -110,10 +87,7 @@ function creditNote(document) {
   return lines.map((l, i) => ({ ...l, lineNumber: i + 1 }));
 }
 
-// A bank-charge/interest line discovered during reconciliation (§7 resolution
-// path 2) — two plain debit/credit lines, same shape as manual(), but its
-// own rule name because it flows through postDocument() (a real Document +
-// DocumentLine pair), not postManualEntry()'s document-less path.
+
 function bankAdjustment(document) {
   return document.lines.map((docLine, i) => ({
     accountId: docLine.accountId,
@@ -126,3 +100,4 @@ function bankAdjustment(document) {
 }
 
 export const POSTING_RULES = { invoice, manual, receipt, creditNote, bankAdjustment };
+

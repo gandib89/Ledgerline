@@ -14,7 +14,13 @@ function renderBanking() {
   return render(<QueryClientProvider client={createAppQueryClient()}><MemoryRouter initialEntries={['/banking']}><ToastProvider><Routes><Route element={<Outlet context={{ activeOrganizationId: 'org-1', activeOrganization: { permissions: ['bank.reconcile', 'report.view'] } }} />}><Route path="/banking" element={<BankingPage />} /></Route></Routes></ToastProvider></MemoryRouter></QueryClientProvider>);
 }
 
-beforeEach(() => { resetApiClient(); setActiveOrganization('org-1'); });
+beforeEach(() => {
+  resetApiClient();
+  setActiveOrganization('org-1');
+  server.use(
+    http.get('/api/v1/bank-accounts/:id/statements', () => HttpResponse.json([])),
+  );
+});
 
 describe('Day 5 banking workflow', () => {
   it('maps a CSV, imports it, and shows matching results', async () => {

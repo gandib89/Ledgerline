@@ -9,7 +9,11 @@ export function OrganizationCreator({ first = false, onCreated }) {
   const queryClient = useQueryClient();
   const { notify } = useToast();
   const createOrganization = useMutation({
-    mutationFn: (input) => apiRequest('/orgs', { method: 'POST', body: input }),
+    mutationFn: async (input) => {
+      const organization = await apiRequest('/orgs', { method: 'POST', body: input });
+      await apiRequest(`/orgs/${organization.id}/starter-kit`, { method: 'POST' });
+      return organization;
+    },
     onSuccess: async (organization) => {
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
       setName('');

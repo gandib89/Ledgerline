@@ -4,6 +4,7 @@ import { AsyncState } from '../components/AsyncState.jsx';
 import { Money } from '../components/Money.jsx';
 import { apiRequest } from '../lib/api-client.js';
 import { fromCents, toCents } from '../lib/amount.js';
+import { todayInNepal } from '../lib/date.js';
 
 const cards = [
   ['totalReceivables', 'Receivables', 'Awaiting customer payment'],
@@ -13,16 +14,17 @@ const cards = [
 ];
 
 export function DashboardPage() {
-  const { activeOrganizationId } = useOutletContext();
-  const asOf = new Date().toISOString().slice(0, 10);
+  const { activeOrganizationId, currentFiscalYear } = useOutletContext();
+  const asOf = todayInNepal();
+  const fiscalYearStart = currentFiscalYear?.startDate ?? '1900-01-01';
   const aging = useQuery({
     queryKey: ['ar-aging', activeOrganizationId, asOf],
     queryFn: () => apiRequest(`/reports/ar-aging?asOf=${asOf}`),
     enabled: Boolean(activeOrganizationId),
   });
   const profitLoss = useQuery({
-    queryKey: ['profit-loss', activeOrganizationId, '2025-07-16', asOf],
-    queryFn: () => apiRequest(`/reports/profit-loss?from=2025-07-16&to=${asOf}`),
+    queryKey: ['profit-loss', activeOrganizationId, fiscalYearStart, asOf],
+    queryFn: () => apiRequest(`/reports/profit-loss?from=${fiscalYearStart}&to=${asOf}`),
     enabled: Boolean(activeOrganizationId),
   });
   const bankAccounts = useQuery({
@@ -49,7 +51,7 @@ export function DashboardPage() {
     overdue,
     revenue: profitLoss.data.revenueTotal,
     cashAtBank,
-    periodLabel: 'FY 2082/83 · Current period',
+    periodLabel: currentFiscalYear ? `FY ${currentFiscalYear.label} · Current period` : 'Current period',
   } : null;
 
   return (

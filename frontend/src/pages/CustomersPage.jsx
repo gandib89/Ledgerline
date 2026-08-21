@@ -37,9 +37,10 @@ function partyInput(form, editing) {
 }
 
 export function CustomersPage() {
-  const { activeOrganizationId } = useOutletContext();
+  const { activeOrganizationId, activeOrganization } = useOutletContext();
   const queryClient = useQueryClient();
   const { notify } = useToast();
+  const canManageOrg = Boolean(activeOrganization?.permissions?.includes('org.manage'));
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -123,9 +124,11 @@ export function CustomersPage() {
           <h1>Customers</h1>
           <p>Everyone you invoice, and the credit terms they trade on.</p>
         </div>
-        <button className="primary-button" type="button" onClick={openNewCustomer}>
-          New customer
-        </button>
+        {canManageOrg && (
+          <button className="primary-button" type="button" onClick={openNewCustomer}>
+            New customer
+          </button>
+        )}
       </div>
 
       <div className="toolbar">
@@ -172,14 +175,16 @@ export function CustomersPage() {
                   <td>{party.email ?? '—'}</td>
                   <td className="numeric">{party.creditDays}</td>
                   <td className="table-actions">
-                    <button
-                      className="table-action"
-                      type="button"
-                      aria-label={`Edit ${party.name}`}
-                      onClick={() => openEditCustomer(party)}
-                    >
-                      Edit
-                    </button>
+                    {canManageOrg && (
+                      <button
+                        className="table-action"
+                        type="button"
+                        aria-label={`Edit ${party.name}`}
+                        onClick={() => openEditCustomer(party)}
+                      >
+                        Edit
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -71,8 +71,9 @@ export function InvoiceEditorPage() {
   const editing = Boolean(id);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { activeOrganizationId } = useOutletContext();
+  const { activeOrganizationId, activeOrganization } = useOutletContext();
   const { notify } = useToast();
+  const canCreate = Boolean(activeOrganization?.permissions?.includes('invoice.create'));
   const initializedInvoice = useRef(null);
   const [form, setForm] = useState(newInvoiceForm);
   const [errors, setErrors] = useState({});
@@ -285,7 +286,8 @@ export function InvoiceEditorPage() {
 
         <div className="invoice-form-aside">
           <InvoiceTotals preview={previewEligible ? preview : null} error={previewEligible ? previewError : null} pending={previewEligible && previewPending} />
-          <button className="primary-button save-invoice" type="submit" disabled={saveInvoice.isPending}>{saveInvoice.isPending ? 'Saving…' : 'Save draft'}</button>
+          <button className="primary-button save-invoice" type="submit" disabled={!canCreate || saveInvoice.isPending}>{saveInvoice.isPending ? 'Saving…' : 'Save draft'}</button>
+          {!canCreate && <p className="muted-copy">Invoice creation permission is required.</p>}
         </div>
       </form>
     </div>

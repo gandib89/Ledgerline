@@ -61,6 +61,7 @@ describe('complete endpoint settings UI', () => {
         organizations = [{ ...demoOrganizations[0], id: 'org-new', name: input.name }];
         return HttpResponse.json({ id: 'org-new', name: input.name, isActive: true }, { status: 201 });
       }),
+      http.post('/api/v1/orgs/:id/starter-kit', () => HttpResponse.json({ provisioned: true }, { status: 201 })),
     );
 
     renderApp('/dashboard');

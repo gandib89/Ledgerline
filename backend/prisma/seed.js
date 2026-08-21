@@ -1,5 +1,6 @@
 import { prisma } from '../src/db/client.js';
 import { hashPassword } from '../src/lib/auth/password.js';
+import { provisionStarterKit, STARTER_ACCOUNT_COUNT } from '../src/lib/orgs/starter-kit.js';
 import { seedDemoScenario } from './demo-data.js';
 
 const ROLES = ['Owner', 'Accountant', 'Clerk', 'Viewer'];
@@ -30,42 +31,6 @@ const ROLE_PERMISSIONS = {
   Clerk: ['invoice.create', 'payment.create', 'report.view'],
   Viewer: ['report.view'],
 };
-
-// plan §5's 27-account seed set (asset/liability/equity/income/expense)
-const ACCOUNTS = [
-  ['1010', 'Cash in Hand', 'ASSET'],
-  ['1020', 'Bank — Nabil Bank Current', 'ASSET', { isBankAccount: true }],
-  ['1030', 'Bank — NIC Asia Savings', 'ASSET', { isBankAccount: true }],
-  ['1100', 'Accounts Receivable', 'ASSET', { isControlAccount: true }],
-  ['1200', 'Prepaid Expenses', 'ASSET'],
-  ['1300', 'Fixed Assets — Equipment', 'ASSET'],
-  ['1310', 'Accum. Depreciation — Equip.', 'ASSET'],
-  ['2100', 'Accounts Payable', 'LIABILITY', { isControlAccount: true }],
-  ['2200', 'VAT Payable (Output)', 'LIABILITY', { isControlAccount: true }],
-  ['2210', 'VAT Receivable (Input)', 'ASSET', { isControlAccount: true }],
-  ['2300', 'TDS Payable', 'LIABILITY'],
-  ['2400', 'Accrued Expenses', 'LIABILITY'],
-  ['3100', "Owner's Capital", 'EQUITY'],
-  ['3200', 'Retained Earnings', 'EQUITY'],
-  ['3900', 'Current Year Earnings', 'EQUITY'],
-  ['4100', 'Sales Revenue — Goods', 'REVENUE'],
-  ['4200', 'Sales Revenue — Services', 'REVENUE'],
-  ['4300', 'Discount Given', 'REVENUE'],
-  ['4900', 'Other Income', 'REVENUE'],
-  ['5100', 'Cost of Sales', 'EXPENSE'],
-  ['5200', 'Salaries & Wages', 'EXPENSE'],
-  ['5300', 'Rent Expense', 'EXPENSE'],
-  ['5400', 'Utilities', 'EXPENSE'],
-  ['5500', 'Bank Charges', 'EXPENSE'],
-  ['5600', 'Professional Fees', 'EXPENSE'],
-  ['5700', 'Depreciation Expense', 'EXPENSE'],
-  ['5900', 'Other Expenses', 'EXPENSE'],
-];
-
-const PERIOD_LABELS = [
-  'Shrawan', 'Bhadra', 'Ashwin', 'Kartik', 'Mangsir', 'Poush',
-  'Magh', 'Falgun', 'Chaitra', 'Baisakh', 'Jestha', 'Ashadh',
-];
 
 // plan §14 — one narrator org plus a second org that exists purely so tenant
 // isolation is demonstrable rather than merely claimed.
@@ -157,76 +122,6 @@ async function seedMembership(userId, organizationId, roleId) {
   });
 }
 
-async function seedFiscalYearAndPeriods(organizationId) {
-  const fiscalYear = await prisma.fiscalYear.upsert({
-    where: { organizationId_label: { organizationId, label: '2082/83' } },
-    update: {},
-    create: {
-      organizationId,
-      label: '2082/83',
-      startDate: new Date('2025-07-17'),
-      endDate: new Date('2026-07-16'),
-    },
-  });
-
-  const cursor = new Date(fiscalYear.startDate);
-  for (const label of PERIOD_LABELS) {
-    const start = new Date(cursor);
-    const end = new Date(cursor);
-    end.setMonth(end.getMonth() + 1);
-    end.setDate(end.getDate() - 1);
-
-    await prisma.accountingPeriod.upsert({
-      where: { fiscalYearId_label: { fiscalYearId: fiscalYear.id, label } },
-      update: {},
-      create: {
-        fiscalYearId: fiscalYear.id,
-        label,
-        startDate: start,
-        endDate: end,
-        isOpen: true,
-      },
-    });
-
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-}
-
-async function seedAccounts(organizationId) {
-  for (const [code, name, type, flags = {}] of ACCOUNTS) {
-    await prisma.account.upsert({
-      where: { organizationId_code: { organizationId, code } },
-      update: {},
-      create: { organizationId, code, name, type, ...flags },
-    });
-  }
-}
-
-async function seedTaxCodes(organizationId) {
-  const outputAccount = await prisma.account.findUniqueOrThrow({
-    where: { organizationId_code: { organizationId, code: '2200' } },
-  });
-
-  await prisma.taxCode.upsert({
-    where: { organizationId_code: { organizationId, code: 'VAT13' } },
-    update: {
-      name: 'VAT 13%',
-      rate: '0.1300',
-      type: 'VAT',
-      outputAccountId: outputAccount.id,
-      isActive: true,
-    },
-    create: {
-      organizationId,
-      code: 'VAT13',
-      name: 'VAT 13%',
-      rate: '0.1300',
-      type: 'VAT',
-      outputAccountId: outputAccount.id,
-    },
-  });
-}
-
 async function seedParties(organizationId, parties) {
   for (const [code, name, creditDays] of parties) {
     await prisma.party.upsert({
@@ -252,9 +147,7 @@ async function main() {
       await seedMembership(user.id, org.id, roles[roleName].id);
     }
 
-    await seedFiscalYearAndPeriods(org.id);
-    await seedAccounts(org.id);
-    await seedTaxCodes(org.id);
+    await provisionStarterKit(prisma, org.id);
     await seedParties(org.id, parties);
 
     if (name === 'Annapurna Trading Pvt. Ltd.') {
@@ -266,7 +159,7 @@ async function main() {
       console.log('Seeded exact Section 14 invoices, receipts, statement, audit trail, and zero-difference reconciliation');
     }
 
-    console.log(`Seeded ${name}: ${members.length} members, ${ACCOUNTS.length} accounts, ${parties.length} customers`);
+    console.log(`Seeded ${name}: ${members.length} members, ${STARTER_ACCOUNT_COUNT} accounts, ${parties.length} customers`);
   }
 
   console.log(`Seed complete. Demo users share the password: ${DEMO_PASSWORD}`);

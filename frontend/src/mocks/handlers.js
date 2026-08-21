@@ -216,6 +216,8 @@ export const handlers = [
     return ok({ id: organization.id, name, isActive: true, createdAt: new Date().toISOString() }, { status: 201 });
   }),
 
+  http.post('/api/v1/orgs/:id/starter-kit', () => ok({ provisioned: true }, { status: 201 })),
+
   http.get('/api/v1/orgs/:id/members', () => ok(demoMembers)),
 
   http.post('/api/v1/orgs/:id/members', async ({ request }) => {

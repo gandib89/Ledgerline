@@ -1,7 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
 import { AsyncState } from '../components/AsyncState.jsx';
 import { apiRequest } from '../lib/api-client.js';
+import { useToast } from '../components/toast-context.js';
 
 // Balance-sheet accounts first, then P&L — the order every accountant expects
 // to read a chart of accounts in.
@@ -13,8 +15,16 @@ const TYPE_ORDER = [
   ['EXPENSE', 'Expenses'],
 ];
 
+const EMPTY_FORM = { code: '', name: '', type: 'ASSET' };
+
 export function AccountsPage() {
-  const { activeOrganizationId } = useOutletContext();
+  const { activeOrganizationId, activeOrganization } = useOutletContext();
+  const queryClient = useQueryClient();
+  const { notify } = useToast();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const canManageOrg = Boolean(activeOrganization?.permissions?.includes('org.manage'));
+
   const accounts = useQuery({
     // The org id is part of the key so switching orgs refetches rather than
     // showing the previous tenant's chart from cache.
@@ -22,6 +32,23 @@ export function AccountsPage() {
     queryFn: () => apiRequest('/accounts'),
     enabled: Boolean(activeOrganizationId),
   });
+
+  const createAccount = useMutation({
+    mutationFn: (input) => apiRequest('/accounts', { method: 'POST', body: input }),
+    onSuccess: (account) => {
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      notify({ title: 'Account added', message: `${account.code} · ${account.name}`, tone: 'success' });
+      setDrawerOpen(false);
+      setForm(EMPTY_FORM);
+    },
+    onError: (error) => notify({ title: 'Could not add account', message: error.message, tone: 'error' }),
+  });
+
+  function submit(event) {
+    event.preventDefault();
+    if (!form.code.trim() || !form.name.trim()) return;
+    createAccount.mutate({ code: form.code.trim(), name: form.name.trim(), type: form.type });
+  }
 
   return (
     <div className="accounts-page">
@@ -31,6 +58,11 @@ export function AccountsPage() {
           <h1>Chart of accounts</h1>
           <p>Every ledger posting lands in one of these accounts.</p>
         </div>
+        {canManageOrg && (
+          <button className="primary-button" type="button" onClick={() => setDrawerOpen(true)}>
+            New account
+          </button>
+        )}
       </div>
 
       {!activeOrganizationId || accounts.isPending ? (
@@ -74,6 +106,42 @@ export function AccountsPage() {
             </section>
           );
         })
+      )}
+
+      {drawerOpen && (
+        <div className="drawer" role="dialog" aria-modal="true" aria-label="New account">
+          <form className="drawer-panel" onSubmit={submit} noValidate>
+            <h2>New account</h2>
+
+            <label>
+              Code
+              <input autoFocus value={form.code} onChange={(e) => setForm((current) => ({ ...current, code: e.target.value }))} />
+            </label>
+
+            <label>
+              Name
+              <input value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} />
+            </label>
+
+            <label>
+              Type
+              <select value={form.type} onChange={(e) => setForm((current) => ({ ...current, type: e.target.value }))}>
+                {TYPE_ORDER.map(([type, label]) => (
+                  <option key={type} value={type}>{label}</option>
+                ))}
+              </select>
+            </label>
+
+            <div className="drawer-actions">
+              <button className="secondary-button" type="button" onClick={() => setDrawerOpen(false)}>
+                Cancel
+              </button>
+              <button className="primary-button" type="submit" disabled={createAccount.isPending}>
+                {createAccount.isPending ? 'Adding…' : 'Add account'}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );

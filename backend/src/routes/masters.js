@@ -7,6 +7,7 @@ import { authorize } from '../middleware/authorize.js';
 import { createPartySchemas } from '../../../shared/party-schema.js';
 import { serializeTaxCode } from './day3-contracts.js';
 import { notFound } from '../lib/accounting/errors.js';
+import { createFiscalYearWithPeriods, nextFiscalYearWindow } from '../lib/orgs/starter-kit.js';
 
 const router = Router();
 
@@ -94,6 +95,18 @@ router.post('/accounts', authorize('org.manage'), async (req, res, next) => {
     };
 
     res.status(201).json(serializeAccount(account));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Roles are global reference data (seed.js: "not tenant data"), but this
+// list only exists to populate the role picker on the add-member form, so
+// it's gated the same as that write (org.manage) rather than left open.
+router.get('/roles', authorize('org.manage'), async (req, res, next) => {
+  try {
+    const roles = await prisma.role.findMany({ orderBy: { name: 'asc' } });
+    res.json(roles.map((role) => ({ id: role.id, name: role.name })));
   } catch (err) {
     next(err);
   }
@@ -195,6 +208,43 @@ router.get('/fiscal-years', authorize('report.view'), async (req, res, next) => 
       endDate: asDate(fy.endDate),
       isClosed: fy.isClosed,
     })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// A fiscal year only ever gets longer into the future by seeding (starter
+// kit) or by rolling forward here — nothing ever advances it automatically,
+// so an org that outlives its last fiscal year is stuck posting nothing
+// until its owner calls this. AD dates only, same approximation as the
+// starter kit (see starter-kit.js) — no real Bikram Sambat conversion.
+router.post('/fiscal-years', authorize('org.manage'), async (req, res, next) => {
+  try {
+    const latest = await prisma.fiscalYear.findFirst({
+      where: { organizationId: req.organizationId },
+      orderBy: { endDate: 'desc' },
+    });
+    if (!latest) throw notFound('No existing fiscal year to roll forward from');
+
+    const fiscalYear = await prisma.$transaction((tx) => createFiscalYearWithPeriods(
+      tx, req.organizationId, nextFiscalYearWindow(latest),
+    ));
+
+    req.auditEntry = {
+      action: 'fiscalYear.create',
+      entityType: 'FiscalYear',
+      entityId: fiscalYear.id,
+      before: null,
+      after: { label: fiscalYear.label, startDate: asDate(fiscalYear.startDate), endDate: asDate(fiscalYear.endDate) },
+    };
+
+    res.status(201).json({
+      id: fiscalYear.id,
+      label: fiscalYear.label,
+      startDate: asDate(fiscalYear.startDate),
+      endDate: asDate(fiscalYear.endDate),
+      isClosed: fiscalYear.isClosed,
+    });
   } catch (err) {
     next(err);
   }

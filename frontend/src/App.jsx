@@ -23,6 +23,7 @@ import { JournalEntriesPage } from './pages/JournalEntriesPage.jsx';
 import { CreditNotePage } from './pages/CreditNotePage.jsx';
 import { CreditNoteDetailPage } from './pages/CreditNoteDetailPage.jsx';
 import { ReceiptDetailPage } from './pages/ReceiptDetailPage.jsx';
+import { TeamPage } from './pages/TeamPage.jsx';
 
 function App() {
   return (
@@ -52,6 +53,7 @@ function App() {
           <Route path="/reports/bank-reconciliation" element={<BankReconciliationPage />} />
           <Route path="/audit" element={<AuditTrailPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/team" element={<TeamPage />} />
         </Route>
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

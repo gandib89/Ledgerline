@@ -1,8 +1,6 @@
 import { add, sub, mul, round2, dec } from '../money.js';
 
-// Pure: no I/O, no clock, no randomness. Round at each named boundary
-// (discount, tax, line total), then sum the rounded values — never sum
-// unrounded values and round at the end (§6 worked example 2).
+
 export function computeLine({ quantity, unitPrice, discountPct = 0, taxRate = 0 }) {
   const gross = mul(quantity, unitPrice);
 
@@ -14,8 +12,7 @@ export function computeLine({ quantity, unitPrice, discountPct = 0, taxRate = 0 
   return { discountAmount, taxableAmount, taxAmount, lineTotal };
 }
 
-// Document totals are the sum of already-rounded line values, so grandTotal
-// always equals Σ debit on the journal entry, exactly (§6, test INV-11).
+
 export function sumLines(lines) {
   return lines.reduce(
     (totals, line) => ({

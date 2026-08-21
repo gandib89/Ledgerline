@@ -6,11 +6,12 @@ import { Money } from '../components/Money.jsx';
 import { ReportActions } from '../components/ReportActions.jsx';
 import { apiRequest } from '../lib/api-client.js';
 import { downloadCsv } from '../lib/csv-export.js';
+import { todayInNepal } from '../lib/date.js';
 
 export function BankReconciliationPage() {
   const { activeOrganizationId } = useOutletContext();
   const [selectedId, setSelectedId] = useState('');
-  const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
+  const [asOf, setAsOf] = useState(todayInNepal());
   const accounts = useQuery({ queryKey: ['bank-accounts', activeOrganizationId], queryFn: () => apiRequest('/bank-accounts'), enabled: Boolean(activeOrganizationId) });
   const bankAccountId = selectedId || accounts.data?.[0]?.id || '';
   const report = useQuery({ queryKey: ['bank-reconciliation', activeOrganizationId, bankAccountId, asOf], queryFn: () => apiRequest(`/reports/bank-reconciliation?bankAccountId=${bankAccountId}&asOf=${asOf}`), enabled: Boolean(activeOrganizationId && bankAccountId && asOf) });

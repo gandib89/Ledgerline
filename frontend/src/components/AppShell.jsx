@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context.js';
 import { apiRequest, setActiveOrganization } from '../lib/api-client.js';
+import { todayInNepal } from '../lib/date.js';
 import { AsyncState } from './AsyncState.jsx';
 import { Icon } from './Icon.jsx';
 import { useToast } from './toast-context.js';
@@ -22,6 +23,7 @@ const navigation = [
   ['reports', 'Balance Sheet', '/reports/balance-sheet'],
   ['reports', 'Bank Reconciliation', '/reports/bank-reconciliation'],
   ['reports', 'Chart of accounts', '/accounts'],
+  ['customers', 'Team', '/team'],
   ['audit', 'Audit trail', '/audit'],
   ['settings', 'Settings', '/settings'],
 ];
@@ -39,16 +41,32 @@ export function AppShell() {
   });
   const activeOrganizationId = selectedOrganizationId || organizations.data?.[0]?.id || '';
   const activeOrganization = organizations.data?.find(({ id }) => id === activeOrganizationId) ?? null;
+  useEffect(() => {
+    if (activeOrganizationId) setActiveOrganization(activeOrganizationId);
+  }, [activeOrganizationId]);
+
   const fiscalYears = useQuery({
     queryKey: ['fiscal-years', activeOrganizationId],
     queryFn: () => apiRequest('/fiscal-years'),
     enabled: Boolean(activeOrganizationId),
   });
-  const fiscalLabel = fiscalYears.data?.find(({ isClosed }) => !isClosed)?.label ?? fiscalYears.data?.[0]?.label ?? 'Fiscal year';
+  const today = todayInNepal();
+  // fiscalYears.data is ordered by startDate ascending (API contract) — the
+  // last entry is the org's most recent fiscal year even when it's expired.
+  const currentFiscalYear = fiscalYears.data?.find((fy) => fy.startDate <= today && today <= fy.endDate)
+    ?? fiscalYears.data?.[fiscalYears.data.length - 1]
+    ?? null;
+  const fiscalYearExpired = Boolean(currentFiscalYear) && today > currentFiscalYear.endDate;
+  const canManageOrg = Boolean(activeOrganization?.permissions?.includes('org.manage'));
 
-  useEffect(() => {
-    if (activeOrganizationId) setActiveOrganization(activeOrganizationId);
-  }, [activeOrganizationId]);
+  const startNextFiscalYear = useMutation({
+    mutationFn: () => apiRequest('/fiscal-years', { method: 'POST' }),
+    onSuccess: (fy) => {
+      queryClient.invalidateQueries({ queryKey: ['fiscal-years'] });
+      notify({ title: 'Fiscal year started', message: `FY ${fy.label}`, tone: 'success' });
+    },
+    onError: (error) => notify({ title: 'Could not start fiscal year', message: error.message, tone: 'error' }),
+  });
 
   async function changeOrganization(event) {
     const id = event.target.value;
@@ -117,7 +135,7 @@ export function AppShell() {
             {organizations.isError && (
               <AsyncState tone="error" title="Organizations unavailable" message="Try refreshing this page." />
             )}
-            {organizations.data && (
+            {organizations.data && organizations.data.length > 0 && (
               <select aria-label="Active organization" value={activeOrganizationId} onChange={changeOrganization}>
                 {organizations.data.map((organization) => (
                   <option value={organization.id} key={organization.id}>{organization.name}</option>
@@ -127,7 +145,17 @@ export function AppShell() {
           </div>
 
           <div className="topbar-meta">
-            <span className="fiscal-pill">{fiscalLabel}</span>
+            <span className="fiscal-pill">{currentFiscalYear ? `FY ${currentFiscalYear.label}` : 'No fiscal year'}</span>
+            {fiscalYearExpired && canManageOrg && (
+              <button
+                className="secondary-button compact"
+                type="button"
+                onClick={() => startNextFiscalYear.mutate()}
+                disabled={startNextFiscalYear.isPending}
+              >
+                {startNextFiscalYear.isPending ? 'Starting…' : 'Start next fiscal year'}
+              </button>
+            )}
             <div className="user-summary">
               <span className="user-avatar" aria-hidden="true">{user?.email?.slice(0, 1).toUpperCase() ?? 'A'}</span>
               <span><strong>{user?.email ?? 'Account user'}</strong><small>Secure session</small></span>
@@ -139,7 +167,7 @@ export function AppShell() {
         <main className="app-content" id="main-content" tabIndex="-1">
           {organizations.data?.length === 0
             ? <OrganizationCreator first onCreated={(organization) => setSelectedOrganizationId(organization.id)} />
-            : <Outlet context={{ activeOrganizationId, activeOrganization }} />}
+            : <Outlet context={{ activeOrganizationId, activeOrganization, currentFiscalYear }} />}
         </main>
       </div>
     </div>

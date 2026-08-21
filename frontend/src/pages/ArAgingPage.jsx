@@ -5,10 +5,11 @@ import { AsyncState } from '../components/AsyncState.jsx';
 import { Money } from '../components/Money.jsx';
 import { apiRequest } from '../lib/api-client.js';
 import { fromCents, toCents } from '../lib/amount.js';
+import { todayInNepal } from '../lib/date.js';
 
 export function ArAgingPage() {
   const { activeOrganizationId } = useOutletContext();
-  const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
+  const [asOf, setAsOf] = useState(todayInNepal());
   const [expanded, setExpanded] = useState(new Set());
   const report = useQuery({
     queryKey: ['ar-aging', activeOrganizationId, asOf],

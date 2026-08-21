@@ -17,7 +17,7 @@ function renderPage(element) {
       <MemoryRouter initialEntries={['/']}>
         <ToastProvider>
           <Routes>
-            <Route element={<Outlet context={{ activeOrganizationId: 'org-1' }} />}>
+            <Route element={<Outlet context={{ activeOrganizationId: 'org-1', activeOrganization: { permissions: ['org.manage'] } }} />}>
               <Route index element={element} />
             </Route>
           </Routes>

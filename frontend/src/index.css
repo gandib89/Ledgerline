@@ -2153,6 +2153,12 @@ p {
   min-width: 260px;
 }
 
+.banking-heading-actions {
+  display: flex;
+  align-items: end;
+  gap: 14px;
+}
+
 .statement-upload {
   display: grid;
   gap: 18px;
