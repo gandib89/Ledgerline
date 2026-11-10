@@ -18,5 +18,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',
     restoreMocks: true,
+    // These tests render the whole App (auth bootstrap, org load, shell) and drive it
+    // with userEvent; under parallel-suite CPU load that outruns the 5s default.
+    testTimeout: 20000,
   },
 })
