@@ -30,7 +30,7 @@ export function buildAging({ open, unapplied, today }) {
       byParty.set(partyId, {
         partyId, partyName,
         buckets: Object.fromEntries(AGING_BUCKETS.map((b) => [b.key, dec(0)])),
-        unapplied: dec(0), total: dec(0), invoices: [],
+        unapplied: dec(0), total: dec(0), documents: [],
       });
     }
     return byParty.get(partyId);
@@ -41,7 +41,7 @@ export function buildAging({ open, unapplied, today }) {
     const row = rowFor(d.partyId, d.partyName);
     row.buckets[bucket] = add(row.buckets[bucket], d.outstanding);
     row.total = add(row.total, d.outstanding);
-    row.invoices.push({ id: d.id, docNo: d.docNo, dueDate: d.dueDate.toISOString().slice(0, 10), outstandingAmount: dec(d.outstanding).toFixed(2), bucket });
+    row.documents.push({ id: d.id, docNo: d.docNo, dueDate: d.dueDate.toISOString().slice(0, 10), outstandingAmount: dec(d.outstanding).toFixed(2), bucket });
   }
   for (const u of unapplied) {
     const row = rowFor(u.partyId, u.partyName);
@@ -58,7 +58,7 @@ export function buildAging({ open, unapplied, today }) {
       buckets: Object.fromEntries(Object.entries(row.buckets).map(([k, v]) => [k, v.toFixed(2)])),
       unapplied: row.unapplied.toFixed(2),
       total: row.total.toFixed(2),
-      invoices: row.invoices,
+      documents: row.documents,
     };
   });
   return { buckets: AGING_BUCKETS.map((b) => ({ key: b.key, label: b.label })), rows, grandTotal };
@@ -79,6 +79,11 @@ const sumBy = (rows, key) => {
 // as Unapplied); an allocation from a payment dated today or earlier to a
 // document dated after today lowers the payment's outstanding amount although
 // the ledger does not yet see that document, so it is added back to Unapplied.
+// Two more holes of the same kind: a Credit Note dated after today lowers its
+// Invoice's outstanding amount without any allocation row, so it is added
+// back; and a document reversed by an entry dated after today is REVERSED
+// (outstanding 0) although the ledger still carries it, so it counts as open
+// at its full amount (reversal removes its allocations, so that is exact).
 export async function loadAgingInputs({ organizationId, today, openType, paymentType }) {
   const lte = new Date(today);
   const allocations = (paymentPosting, targetPosting) => prisma.paymentAllocation.findMany({
@@ -93,20 +98,41 @@ export async function loadAgingInputs({ organizationId, today, openType, payment
   const openAddBack = sumBy(paidLater, 'targetDocumentId');
   const paymentAddBack = sumBy(billedLater, 'paymentDocumentId');
 
+  if (openType === 'INVOICE') {
+    const creditNotes = await prisma.document.findMany({
+      where: { organizationId, docType: 'CREDIT_NOTE', status: 'POSTED', postingDate: { gt: lte }, parentDocumentId: { not: null } },
+      select: { parentDocumentId: true, grandTotal: true },
+    });
+    for (const [invoiceId, amount] of sumBy(creditNotes.map((c) => ({ parentDocumentId: c.parentDocumentId, amount: c.grandTotal })), 'parentDocumentId')) {
+      openAddBack.set(invoiceId, add(openAddBack.get(invoiceId) ?? 0, amount));
+    }
+  }
+
+  const reversals = await prisma.journalEntry.findMany({
+    where: { organizationId, entryDate: { gt: lte }, reversalOf: { sourceId: { not: null } } },
+    select: { reversalOf: { select: { sourceId: true } } },
+  });
+  const reversedLater = new Set(reversals.map((r) => r.reversalOf.sourceId));
+
   const documents = (docType, addBack) => prisma.document.findMany({
     where: {
-      organizationId, docType, postingDate: { lte }, status: { in: ['POSTED', 'PARTIALLY_PAID', 'PAID'] },
-      OR: [{ outstandingAmount: { gt: 0 } }, { id: { in: [...addBack.keys()] } }],
+      organizationId, docType, postingDate: { lte },
+      OR: [
+        { status: { in: ['POSTED', 'PARTIALLY_PAID', 'PAID'] }, OR: [{ outstandingAmount: { gt: 0 } }, { id: { in: [...addBack.keys()] } }] },
+        { status: 'REVERSED', id: { in: [...reversedLater] } },
+      ],
     },
     include: { party: true },
   });
   const [opens, payments] = await Promise.all([documents(openType, openAddBack), documents(paymentType, paymentAddBack)]);
 
+  const outstandingNow = (d, addBack) => (d.status === 'REVERSED' ? dec(d.grandTotal) : add(d.outstandingAmount, addBack.get(d.id) ?? 0));
+
   return {
     open: opens.map((d) => ({
       partyId: d.partyId, partyName: d.party?.name ?? null, id: d.id, docNo: d.docNo, dueDate: d.dueDate ?? d.docDate,
-      outstanding: add(d.outstandingAmount, openAddBack.get(d.id) ?? 0),
+      outstanding: outstandingNow(d, openAddBack),
     })).filter((d) => d.outstanding.gt(0)),
-    unapplied: payments.map((d) => ({ partyId: d.partyId, partyName: d.party?.name ?? null, amount: add(d.outstandingAmount, paymentAddBack.get(d.id) ?? 0) })).filter((u) => u.amount.gt(0)),
+    unapplied: payments.map((d) => ({ partyId: d.partyId, partyName: d.party?.name ?? null, amount: outstandingNow(d, paymentAddBack) })).filter((u) => u.amount.gt(0)),
   };
 }

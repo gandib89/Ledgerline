@@ -3,13 +3,7 @@ import { sumLines } from '../accounting/line-math.js';
 import { resolveLines, toDocumentLineData } from '../accounting/document-lines.js';
 import { findFiscalYearForDate } from '../accounting/fiscal-year.js';
 import { notFound, conflict, businessRule } from '../accounting/errors.js';
-
-function addDays(date, days) {
-  const d = new Date(date);
-  // eslint-disable-next-line no-restricted-syntax -- day-of-month arithmetic, not money
-  d.setDate(d.getDate() + days);
-  return d;
-}
+import { addDays } from './add-days.js';
 
 // Bill lines may only hit EXPENSE or ASSET accounts that are neither control
 // nor bank accounts: a purchase must never post straight to AP, VAT or cash.
@@ -66,12 +60,11 @@ async function findDuplicateBill(tx, organizationId, partyId, referenceNo, exclu
 }
 
 function duplicateReference(dup) {
-  const err = conflict(
+  return conflict(
     'duplicate_supplier_reference',
     `A Bill with Supplier Reference "${dup.referenceNo}" already exists for this Supplier. Open and edit it instead of entering it again.`,
+    { billId: dup.id, referenceNo: dup.referenceNo },
   );
-  err.details = { billId: dup.id, referenceNo: dup.referenceNo };
-  return err;
 }
 
 // Check first for a friendly 409; the SAVEPOINT + named-index catch is the race

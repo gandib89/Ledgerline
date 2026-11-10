@@ -531,7 +531,7 @@ export const handlers = [
         buckets: { current: money(total), d1_30: '0.00', d31_60: '0.00', d61_90: '0.00', d90_plus: '0.00' },
         unapplied: '0.00',
         total: money(total),
-        invoices: invoices.map((invoice) => ({ id: invoice.id, docNo: invoice.docNo, dueDate: invoice.dueDate, outstandingAmount: invoice.outstandingAmount, bucket: 'current' })),
+        documents: invoices.map((invoice) => ({ id: invoice.id, docNo: invoice.docNo, dueDate: invoice.dueDate, outstandingAmount: invoice.outstandingAmount, bucket: 'current' })),
       };
     }).filter((row) => Number(row.total) > 0);
     const grandTotal = money(rows.reduce((sum, row) => sum + Number(row.total), 0));

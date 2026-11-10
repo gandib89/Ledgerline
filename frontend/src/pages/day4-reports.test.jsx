@@ -23,7 +23,7 @@ describe('Day 4 reports', () => {
     server.use(http.get('/api/v1/reports/ar-aging', ({ request }) => { requestedUrl = new URL(request.url); return HttpResponse.json({
       asOf: '2025-08-20',
       buckets: [{ key: 'current', label: 'Current' }, { key: 'd1_30', label: '1-30 days' }, { key: 'd31_60', label: '31-60 days' }, { key: 'd61_90', label: '61-90 days' }, { key: 'd90_plus', label: '90+ days' }],
-      rows: [{ partyId: 'party-1', partyName: 'Himalayan Trek Supplies', buckets: { current: '0.00', d1_30: '63000.00', d31_60: '0.00', d61_90: '0.00', d90_plus: '0.00' }, unapplied: '-3000.00', total: '60000.00', invoices: [{ id: 'invoice-1', docNo: 'INV-2082-0001', dueDate: '2025-08-19', outstandingAmount: '63000.00', bucket: 'd1_30' }] }],
+      rows: [{ partyId: 'party-1', partyName: 'Himalayan Trek Supplies', buckets: { current: '0.00', d1_30: '63000.00', d31_60: '0.00', d61_90: '0.00', d90_plus: '0.00' }, unapplied: '-3000.00', total: '60000.00', documents: [{ id: 'invoice-1', docNo: 'INV-2082-0001', dueDate: '2025-08-19', outstandingAmount: '63000.00', bucket: 'd1_30' }] }],
       totals: { grandTotal: '60000.00' },
       integrity: { arControlBalance: '60000.00', balanced: true },
     }); }));

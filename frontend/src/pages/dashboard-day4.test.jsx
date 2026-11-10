@@ -22,7 +22,7 @@ describe('Day 4 dashboard', () => {
         agingSearch = new URL(request.url).search;
         return HttpResponse.json({
         buckets: [{ key: 'current', label: 'Current' }, { key: 'd1_30', label: '1-30 days' }],
-        rows: [{ partyId: 'p-1', partyName: 'Customer', buckets: { current: '33900.00', d1_30: '35600.00' }, total: '69500.00', invoices: [] }],
+        rows: [{ partyId: 'p-1', partyName: 'Customer', buckets: { current: '33900.00', d1_30: '35600.00' }, total: '69500.00', documents: [] }],
         totals: { grandTotal: '69500.00' },
         integrity: { arControlBalance: '69500.00', balanced: true },
       }); }),

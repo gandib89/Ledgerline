@@ -117,7 +117,7 @@ async function cascadeReversal(tx, actor, documentType, doc) {
     // counter). Any allocation row means a Supplier Payment still covers it.
     const applied = await tx.paymentAllocation.count({ where: { organizationId: actor.organizationId, targetDocumentId: doc.id } });
     if (applied > 0 || dec(doc.allocatedAmount).gt(0)) {
-      throw businessRule('cannot_reverse_bill_with_payments', `Bill ${doc.id} has payments applied — reverse the Supplier Payment first`);
+      throw businessRule('cannot_reverse_bill_with_payments', `Bill ${doc.id} has payments applied â€” reverse the Supplier Payment first`);
     }
     return tx.document.update({
       where: { id: doc.id },

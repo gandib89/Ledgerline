@@ -5,6 +5,7 @@ import { AsyncState } from '../components/AsyncState.jsx';
 import { Money } from '../components/Money.jsx';
 import { useToast } from '../components/toast-context.js';
 import { apiRequest } from '../lib/api-client.js';
+import { fetchAllPages } from '../lib/fetch-all-pages.js';
 import { BillPayments } from '../components/BillPayments.jsx';
 import { JournalPanel } from './InvoiceDetailPage.jsx';
 
@@ -28,7 +29,7 @@ export function BillDetailPage() {
   });
   const suppliers = useQuery({
     queryKey: ['parties', activeOrganizationId, 'bill-supplier-selector'],
-    queryFn: () => apiRequest('/parties?type=supplier&page=1'),
+    queryFn: () => fetchAllPages('/parties?type=supplier'),
     enabled: Boolean(activeOrganizationId),
   });
   const accounts = useQuery({

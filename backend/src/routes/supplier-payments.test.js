@@ -226,6 +226,26 @@ describe('validation rejections', () => {
     expect(dup.body.error.code).toBe('duplicate_allocation');
   });
 
+  it('accepts decimal-string and numeric amounts, and rejects more than 2 decimal places or non-positive amounts', async () => {
+    const bill = await postedBill();
+    for (const amount of [100.004, '100.004', '10.001', 0, '0.00', '-5.00', '1e2', 'abc', '']) {
+      const res = await pay({ amount, allocations: [] });
+      expect(res.status, `amount ${JSON.stringify(amount)}`).toBe(400);
+      expect(res.body.error.code).toBe('validation_error');
+    }
+    const badAlloc = await pay({ amount: '500.00', allocations: [{ billId: bill.id, amount: '10.001' }] });
+    expect(badAlloc.status).toBe(400);
+    const zeroAlloc = await pay({ amount: '500.00', allocations: [{ billId: bill.id, amount: '0' }] });
+    expect(zeroAlloc.status).toBe(400);
+
+    const asString = await pay({ amount: '100.25', allocations: [{ billId: bill.id, amount: '50.5' }] });
+    expect(asString.status).toBe(201);
+    expect(asString.body.supplierPayment.grandTotal).toBe('100.25');
+    const asNumber = await pay({ amount: 20.5, allocations: [{ billId: bill.id, amount: 20 }] });
+    expect(asNumber.status).toBe(201);
+    expect(asNumber.body.supplierPayment.grandTotal).toBe('20.50');
+  });
+
   it('requires an Idempotency-Key', async () => {
     const res = await pay({ amount: '10.00', allocations: [] }, { key: null });
     expect(res.status).toBe(400);

@@ -7,6 +7,7 @@ import { authorize } from '../middleware/authorize.js';
 import { postSupplierPayment } from '../lib/accounting/supplier-payment-service.js';
 import { runIdempotent } from '../lib/idempotency/run-idempotent.js';
 import { notFound } from '../lib/accounting/errors.js';
+import { dec } from '../lib/money.js';
 import { serializeJournalEntry } from './journal-entries.js';
 
 const router = Router();
@@ -37,16 +38,23 @@ function serializeSupplierPayment(doc) {
   };
 }
 
+// ADR 0002: amounts are decimal strings. Numbers are still accepted (existing
+// clients) but are normalised to a string first, so nothing is ever rounded:
+// more than 2 decimal places, zero, negatives and exponent forms are rejected.
+const moneyAmount = z.union([z.string(), z.number()])
+  .transform(String)
+  .refine((s) => /^\d+(\.\d{1,2})?$/.test(s) && dec(s).gt(0), 'Must be a positive amount with at most 2 decimal places');
+
 const allocationSchema = z.object({
   billId: z.string().uuid(),
-  amount: z.coerce.number().positive(),
+  amount: moneyAmount,
 }).strict();
 
 const createSupplierPaymentSchema = z.object({
   partyId: z.string().uuid(),
   docDate: z.string().regex(DATE_RE),
   paidFromAccountId: z.string().uuid(),
-  amount: z.coerce.number().positive(),
+  amount: moneyAmount,
   referenceNo: z.string().optional(),
   notes: z.string().optional(),
   allocations: z.array(allocationSchema).default([]),

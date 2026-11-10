@@ -202,7 +202,7 @@ registry.registerPath({
   responses: { 200: { description: 'OK', ...json(bill) }, 404: errorResponse, 409: errorResponse },
 });
 registry.registerPath({
-  method: 'post', path: '/api/v1/bills/{id}/post', tags: ['Bills'], summary: 'Post a draft Bill — creates its journal entry and BILL number (bill.post)',
+  method: 'post', path: '/api/v1/bills/{id}/post', tags: ['Bills'], summary: 'Post a draft Bill â€” creates its journal entry and BILL number (bill.post)',
   security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }) },
   responses: { 200: { description: 'OK', ...json(z.object({ bill, journalEntry })) }, 404: errorResponse, 409: errorResponse, 422: errorResponse },
 });

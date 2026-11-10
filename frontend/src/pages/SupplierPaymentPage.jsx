@@ -5,6 +5,7 @@ import { AsyncState } from '../components/AsyncState.jsx';
 import { Money } from '../components/Money.jsx';
 import { useToast } from '../components/toast-context.js';
 import { apiRequest } from '../lib/api-client.js';
+import { fetchAllPages } from '../lib/fetch-all-pages.js';
 import { fromCents, isAllocationValid, remainingAmount, sumAmounts, toCents } from '../lib/amount.js';
 
 const emptyForm = { partyId: '', docDate: '', paidFromAccountId: '', amount: '', referenceNo: '', notes: '' };
@@ -36,7 +37,7 @@ export function SupplierPaymentPage() {
 
   const parties = useQuery({
     queryKey: ['parties', activeOrganizationId, 'supplier-payment'],
-    queryFn: () => apiRequest('/parties?type=supplier&page=1'),
+    queryFn: () => fetchAllPages('/parties?type=supplier'),
     enabled: Boolean(activeOrganizationId && canCreate),
   });
   const accounts = useQuery({
@@ -45,11 +46,11 @@ export function SupplierPaymentPage() {
     enabled: Boolean(activeOrganizationId && canCreate),
   });
   // Open = posted or partially paid. The list is paged, so ask for each status
-  // rather than filter one page client-side.
+  // (all its pages) rather than filter one page client-side.
   const billQueries = useQueries({
     queries: ['posted', 'partially_paid'].map((status) => ({
       queryKey: ['bills', activeOrganizationId, 'open', status, form.partyId],
-      queryFn: () => apiRequest(`/bills?partyId=${form.partyId}&status=${status}&page=1`),
+      queryFn: () => fetchAllPages(`/bills?partyId=${form.partyId}&status=${status}`),
       enabled: Boolean(activeOrganizationId && canCreate && form.partyId),
     })),
   });

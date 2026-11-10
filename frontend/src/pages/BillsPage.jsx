@@ -4,6 +4,7 @@ import { Link, useOutletContext } from 'react-router-dom';
 import { AsyncState } from '../components/AsyncState.jsx';
 import { Money } from '../components/Money.jsx';
 import { apiRequest } from '../lib/api-client.js';
+import { fetchAllPages } from '../lib/fetch-all-pages.js';
 
 const PAGE_SIZE = 20;
 const STATUS_LABELS = {
@@ -27,7 +28,7 @@ export function BillsPage() {
   const [filters, setFilters] = useState({ partyId: '', status: '', page: 1 });
   const suppliers = useQuery({
     queryKey: ['parties', activeOrganizationId, 'bill-supplier-selector'],
-    queryFn: () => apiRequest('/parties?type=supplier&page=1'),
+    queryFn: () => fetchAllPages('/parties?type=supplier'),
     enabled: Boolean(activeOrganizationId),
   });
   const bills = useQuery({

@@ -114,6 +114,30 @@ describe('Supplier Payment form', () => {
     expect(key).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it("loads every page of Suppliers and of the Supplier's open Bills, not just the first 20", async () => {
+    const user = userEvent.setup();
+    const page = (rows, request) => {
+      const n = Number(new URL(request.url).searchParams.get('page'));
+      return HttpResponse.json(rows.slice((n - 1) * 20, n * 20));
+    };
+    const manySuppliers = Array.from({ length: 25 }, (_, i) => ({ id: `99999999-9999-4999-8999-${String(i).padStart(12, '0')}`, code: `SUP-${String(i + 1).padStart(3, '0')}`, name: `Supplier ${i + 1}`, type: 'supplier', isActive: true }));
+    const manyBills = Array.from({ length: 45 }, (_, i) => ({ ...openBill, id: `88888888-8888-4888-8888-${String(i).padStart(12, '0')}`, docNo: `BILL-2082-${String(i + 1).padStart(4, '0')}`, partyId: manySuppliers[24].id }));
+    server.use(
+      http.get('/api/v1/parties', ({ request }) => page(manySuppliers, request)),
+      http.get('/api/v1/accounts', () => HttpResponse.json(accounts)),
+      http.get('/api/v1/bills', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status');
+        return status === 'posted' ? page(manyBills.slice(0, 40), request) : page(manyBills.slice(40), request);
+      }),
+    );
+
+    renderForm();
+    const supplierSelect = await screen.findByLabelText('Supplier');
+    await user.selectOptions(supplierSelect, manySuppliers[24].id); // only on page 2 of the Suppliers
+    expect(await screen.findByLabelText('Allocate to BILL-2082-0040')).toBeInTheDocument(); // page 2 of posted
+    expect(screen.getByLabelText('Allocate to BILL-2082-0045')).toBeInTheDocument(); // the partially_paid query
+  });
+
   it('blocks an allocation above the Bill outstanding amount and above the payment amount', async () => {
     const user = userEvent.setup();
     serveForm();

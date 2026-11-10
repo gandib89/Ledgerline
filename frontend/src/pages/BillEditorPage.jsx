@@ -4,6 +4,7 @@ import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom
 import { AsyncState } from '../components/AsyncState.jsx';
 import { useToast } from '../components/toast-context.js';
 import { apiRequest } from '../lib/api-client.js';
+import { fetchAllPages } from '../lib/fetch-all-pages.js';
 import {
   billFormSchema,
   billInput,
@@ -70,7 +71,7 @@ export function BillEditorPage() {
 
   const suppliers = useQuery({
     queryKey: ['parties', activeOrganizationId, 'bill-supplier-selector'],
-    queryFn: () => apiRequest('/parties?type=supplier&page=1'),
+    queryFn: () => fetchAllPages('/parties?type=supplier'),
     enabled: Boolean(activeOrganizationId),
   });
   const expenseAccounts = useQuery({

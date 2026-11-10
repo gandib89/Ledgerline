@@ -3,13 +3,7 @@ import { sumLines } from '../accounting/line-math.js';
 import { resolveLines, toDocumentLineData } from '../accounting/document-lines.js';
 import { findFiscalYearForDate } from '../accounting/fiscal-year.js';
 import { notFound, conflict } from '../accounting/errors.js';
-
-function addDays(date, days) {
-  const d = new Date(date);
-  // eslint-disable-next-line no-restricted-syntax -- day-of-month arithmetic, not money
-  d.setDate(d.getDate() + days);
-  return d;
-}
+import { addDays } from './add-days.js';
 
 // Live totals for the invoice editor — same recomputation as create/update,
 // nothing persisted. Backs POST /invoices/preview.

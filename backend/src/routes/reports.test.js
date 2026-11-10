@@ -52,6 +52,13 @@ async function postInvoice(docDate, amount) {
   return created.body.id;
 }
 
+// Reverses the document's posted entry with a (possibly future) reversal date.
+async function reverseDocument(docId, reversalDate) {
+  const entry = await prisma.journalEntry.findFirstOrThrow({ where: { organizationId: owner.orgId, sourceId: docId, reversalOfId: null } });
+  const res = await request(app).post(`/api/v1/journal-entries/${entry.id}/reverse`).set(owner.headers).send({ reason: 'test', reversalDate });
+  expect(res.status).toBe(200);
+}
+
 describe('GET /reports/ar-aging', () => {
   // "Today" is Nepal's today; pin the clock (Date only, so DB timers still run).
   beforeAll(() => {
@@ -127,6 +134,41 @@ describe('GET /reports/ar-aging', () => {
     expect(row.buckets.current).toBe('2500.00'); // 2500 - 1000 allocated, + 1000 added back
     expect(row.unapplied).toBe('0.00'); // the 200 remainder belongs to a future receipt
     expect(row.total).toBe('2500.00');
+    expect(res.body.integrity.balanced).toBe(true);
+  });
+
+  it('adds back future-dated credit notes so the total still equals AR (1100)', async () => {
+    const cnParty = await prisma.party.create({ data: { organizationId: owner.orgId, type: 'CUSTOMER', code: 'CUS-CN', name: 'Future Credit Note Customer', creditDays: 30 } });
+    const created = await request(app).post('/api/v1/invoices').set(owner.headers).send({
+      partyId: cnParty.id, docDate: '2025-10-20',
+      lines: [{ accountId: salesAccount.id, description: 'Goods', quantity: 1, unitPrice: 2500 }],
+    });
+    await request(app).post(`/api/v1/invoices/${created.body.id}/post`).set(owner.headers).send();
+    const cn = await request(app).post('/api/v1/credit-notes').set(owner.headers).send({
+      invoiceId: created.body.id, docDate: '2025-11-20',
+      lines: [{ accountId: salesAccount.id, description: 'Return', quantity: 1, unitPrice: 1000 }],
+    });
+    expect(cn.status).toBe(201);
+
+    const res = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
+    const row = res.body.rows.find((r) => r.partyId === cnParty.id);
+    expect(row.total).toBe('2500.00'); // the credit note is not in the ledger until 2025-11-20
+    expect(res.body.integrity.balanced).toBe(true);
+  });
+
+  it('keeps an Invoice whose reversal is dated after today as still open', async () => {
+    const revParty = await prisma.party.create({ data: { organizationId: owner.orgId, type: 'CUSTOMER', code: 'CUS-REV', name: 'Future Reversal Customer', creditDays: 30 } });
+    const created = await request(app).post('/api/v1/invoices').set(owner.headers).send({
+      partyId: revParty.id, docDate: '2025-10-05',
+      lines: [{ accountId: salesAccount.id, description: 'Goods', quantity: 1, unitPrice: 1800 }],
+    });
+    await request(app).post(`/api/v1/invoices/${created.body.id}/post`).set(owner.headers).send();
+    await reverseDocument(created.body.id, '2025-11-20');
+
+    const res = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
+    const row = res.body.rows.find((r) => r.partyId === revParty.id);
+    expect(row.total).toBe('1800.00');
+    expect(row.documents.map((d) => d.id)).toEqual([created.body.id]);
     expect(res.body.integrity.balanced).toBe(true);
   });
 
@@ -210,7 +252,7 @@ describe('GET /reports/ap-aging', () => {
     expect(a.buckets).toEqual({ current: '1000.00', d1_30: '1500.00', d31_60: '0.00', d61_90: '3000.00', d90_plus: '0.00' });
     expect(a.unapplied).toBe('-800.00');
     expect(a.total).toBe('4700.00'); // 5500 open Bills - 800 unapplied
-    expect(a.invoices).toHaveLength(3);
+    expect(a.documents).toHaveLength(3);
 
     const b = res.body.rows.find((r) => r.partyId === supplierB.id);
     expect(b.buckets).toEqual({ current: '0.00', d1_30: '0.00', d31_60: '4000.00', d61_90: '0.00', d90_plus: '0.00' });
@@ -249,6 +291,20 @@ describe('GET /reports/ap-aging', () => {
     expect(res.body.integrity.balanced).toBe(true);
   });
 
+  it('keeps a Bill and a Supplier Payment whose reversals are dated after today in the Aging', async () => {
+    const before = (await getAging()).body.rows.find((r) => r.partyId === supplierA.id)?.total ?? '0.00';
+    const bill = await postBill(supplierA.id, '2025-11-05', 700); // due 2025-12-05 -> current
+    await reverseDocument(bill, '2025-11-20');
+    const payment = await payBill(supplierA.id, '2025-11-06', 300); // unapplied advance
+    await reverseDocument(payment, '2025-11-21');
+
+    const res = await getAging();
+    const row = res.body.rows.find((r) => r.partyId === supplierA.id);
+    expect(row.documents.map((d) => d.id)).toContain(bill);
+    expect(row.total).toBe((Number(before) + 400).toFixed(2)); // +700 Bill, -300 payment, both still in the ledger
+    expect(res.body.integrity.balanced).toBe(true);
+  });
+
   it('rejects the asOf query parameter', async () => {
     expect((await request(app).get('/api/v1/reports/ap-aging?asOf=').set(owner.headers)).status).toBe(400);
     expect((await request(app).get('/api/v1/reports/ap-aging').query({ asOf: '2025-11-15' }).set(owner.headers)).status).toBe(400);
@@ -276,7 +332,7 @@ describe('GET /reports/ap-aging', () => {
 
     const res = await getAging();
     expect(res.body.rows.find((r) => r.partyId === otherSupplier.id)).toBeUndefined();
-    expect(res.body.rows.flatMap((r) => r.invoices).find((i) => i.id === otherBill.id)).toBeUndefined();
+    expect(res.body.rows.flatMap((r) => r.documents).find((i) => i.id === otherBill.id)).toBeUndefined();
     expect(res.body.integrity.balanced).toBe(true);
   });
 });

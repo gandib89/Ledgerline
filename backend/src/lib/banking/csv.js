@@ -165,9 +165,7 @@ export function parseAndValidateStatement(csvText, columnMapping) {
   });
 
   if (errors.length > 0) {
-    const err = businessRule('invalid_statement_rows', 'One or more rows failed validation');
-    err.details = errors;
-    throw err;
+    throw businessRule('invalid_statement_rows', 'One or more rows failed validation', errors);
   }
 
   return rows;

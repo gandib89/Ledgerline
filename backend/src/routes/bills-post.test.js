@@ -128,6 +128,19 @@ describe('POST /bills/:id/post', () => {
     expect(stored.journalEntryId).toBe(res.body.journalEntry.id);
   });
 
+  it('refuses to post a Bill whose grand total is zero with a 422 business rule and leaves the draft untouched', async () => {
+    const draft = await createBill({ lines: [{ accountId: expense.id, description: 'Free sample', quantity: 1, unitPrice: 0 }] });
+    expect(draft.grandTotal).toBe('0.00');
+    const entriesBefore = await prisma.journalEntry.count({ where: { organizationId: owner.orgId } });
+
+    const res = await postBill(owner.headers, draft.id);
+
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('bill_total_zero');
+    expect((await prisma.document.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe('DRAFT');
+    expect(await prisma.journalEntry.count({ where: { organizationId: owner.orgId } })).toBe(entriesBefore);
+  });
+
   it('writes a bill.posted audit event', async () => {
     const draft = await createBill();
     await postBill(owner.headers, draft.id);
@@ -292,7 +305,7 @@ describe('reversing a posted Bill (shared journal-entry reversal path)', () => {
 
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('cannot_reverse_bill_with_payments');
-    expect(res.body.error.message).toMatch(/Supplier Payment/);
+    expect(res.body.error.message).toBe(`Bill ${draft.id} has payments applied \u2014 reverse the Supplier Payment first`);
     expect((await prisma.document.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe('POSTED');
     expect((await prisma.journalEntry.findUniqueOrThrow({ where: { id: posted.body.journalEntry.id } })).status).toBe('POSTED');
     expect(await prisma.journalEntry.count({ where: { organizationId: owner.orgId } })).toBe(entriesBefore);

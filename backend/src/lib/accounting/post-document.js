@@ -54,6 +54,11 @@ export async function postDocument(documentId, actor, tx = prisma) {
         throw businessRule('posting_date_before_bill_date', 'Posting Date cannot be earlier than the Bill Date');
       }
 
+      // A zero total would credit AP for 0 against no debits; the DB rejects that as a 500.
+      if (doc.docType === 'BILL' && !dec(doc.grandTotal).gt(0)) {
+        throw businessRule('bill_total_zero', 'A Bill with a grand total of zero cannot be posted');
+      }
+
       const org = await tx.organization.findUniqueOrThrow({ where: { id: actor.organizationId } });
       if (!org.isActive) throw businessRule('organization_read_only', 'Organization is read-only');
 
