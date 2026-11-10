@@ -156,6 +156,28 @@ describe('GET /reports/ar-aging', () => {
     expect(res.body.integrity.balanced).toBe(true);
   });
 
+  it('still counts a Credit Note that is reversed with a date after today, so the total equals AR (1100)', async () => {
+    const rcParty = await prisma.party.create({ data: { organizationId: owner.orgId, type: 'CUSTOMER', code: 'CUS-RCN', name: 'Reversed Credit Note Customer', creditDays: 30 } });
+    const created = await request(app).post('/api/v1/invoices').set(owner.headers).send({
+      partyId: rcParty.id, docDate: '2025-10-20',
+      lines: [{ accountId: salesAccount.id, description: 'Goods', quantity: 1, unitPrice: 2500 }],
+    });
+    await request(app).post(`/api/v1/invoices/${created.body.id}/post`).set(owner.headers).send();
+    const cn = await request(app).post('/api/v1/credit-notes').set(owner.headers).send({
+      invoiceId: created.body.id, docDate: '2025-10-21',
+      lines: [{ accountId: salesAccount.id, description: 'Return', quantity: 1, unitPrice: 1000 }],
+    });
+    expect(cn.status).toBe(201);
+    // Reversal restores the Invoice's outstanding to 2500, but the ledger carries the Credit Note until 2025-11-20.
+    await reverseDocument(cn.body.creditNote.id, '2025-11-20');
+
+    const res = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
+    const row = res.body.rows.find((r) => r.partyId === rcParty.id);
+    expect(row.total).toBe('1500.00'); // 2500 invoice - 1000 credit note, as the ledger sees it today
+    expect(row.documents.map((d) => d.outstandingAmount)).toEqual(['1500.00']);
+    expect(res.body.integrity.balanced).toBe(true);
+  });
+
   it('keeps an Invoice whose reversal is dated after today as still open', async () => {
     const revParty = await prisma.party.create({ data: { organizationId: owner.orgId, type: 'CUSTOMER', code: 'CUS-REV', name: 'Future Reversal Customer', creditDays: 30 } });
     const created = await request(app).post('/api/v1/invoices').set(owner.headers).send({

@@ -129,8 +129,9 @@ describe('POST /bills/:id/post', () => {
   });
 
   it('refuses to post a Bill whose grand total is zero with a 422 business rule and leaves the draft untouched', async () => {
-    const draft = await createBill({ lines: [{ accountId: expense.id, description: 'Free sample', quantity: 1, unitPrice: 0 }] });
-    expect(draft.grandTotal).toBe('0.00');
+    // The API no longer saves a zero-total draft, so zero a valid one directly to exercise the post-time backstop.
+    const draft = await createBill({ referenceNo: 'ZERO-POST' });
+    await prisma.document.update({ where: { id: draft.id }, data: { grandTotal: 0 } });
     const entriesBefore = await prisma.journalEntry.count({ where: { organizationId: owner.orgId } });
 
     const res = await postBill(owner.headers, draft.id);

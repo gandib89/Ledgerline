@@ -84,6 +84,9 @@ const sumBy = (rows, key) => {
 // back; and a document reversed by an entry dated after today is REVERSED
 // (outstanding 0) although the ledger still carries it, so it counts as open
 // at its full amount (reversal removes its allocations, so that is exact).
+// A Credit Note reversed by a later-dated entry is the inverse of the future
+// Credit Note: its Invoice's outstanding amount was restored, so it is taken
+// off the Invoice again.
 export async function loadAgingInputs({ organizationId, today, openType, paymentType }) {
   const lte = new Date(today);
   const allocations = (paymentPosting, targetPosting) => prisma.paymentAllocation.findMany({
@@ -98,6 +101,12 @@ export async function loadAgingInputs({ organizationId, today, openType, payment
   const openAddBack = sumBy(paidLater, 'targetDocumentId');
   const paymentAddBack = sumBy(billedLater, 'paymentDocumentId');
 
+  const reversals = await prisma.journalEntry.findMany({
+    where: { organizationId, entryDate: { gt: lte }, reversalOf: { sourceId: { not: null } } },
+    select: { reversalOf: { select: { sourceId: true } } },
+  });
+  const reversedLater = new Set(reversals.map((r) => r.reversalOf.sourceId));
+
   if (openType === 'INVOICE') {
     const creditNotes = await prisma.document.findMany({
       where: { organizationId, docType: 'CREDIT_NOTE', status: 'POSTED', postingDate: { gt: lte }, parentDocumentId: { not: null } },
@@ -106,13 +115,17 @@ export async function loadAgingInputs({ organizationId, today, openType, payment
     for (const [invoiceId, amount] of sumBy(creditNotes.map((c) => ({ parentDocumentId: c.parentDocumentId, amount: c.grandTotal })), 'parentDocumentId')) {
       openAddBack.set(invoiceId, add(openAddBack.get(invoiceId) ?? 0, amount));
     }
+    // The mirror image: a Credit Note posted by today but reversed by an entry
+    // dated after today. Reversal already restored the Invoice's outstanding
+    // amount, yet the ledger still carries the Credit Note, so take it off again.
+    const reversedNotes = await prisma.document.findMany({
+      where: { organizationId, docType: 'CREDIT_NOTE', status: 'REVERSED', postingDate: { lte }, id: { in: [...reversedLater] }, parentDocumentId: { not: null } },
+      select: { parentDocumentId: true, grandTotal: true },
+    });
+    for (const [invoiceId, amount] of sumBy(reversedNotes.map((c) => ({ parentDocumentId: c.parentDocumentId, amount: c.grandTotal })), 'parentDocumentId')) {
+      openAddBack.set(invoiceId, sub(openAddBack.get(invoiceId) ?? 0, amount));
+    }
   }
-
-  const reversals = await prisma.journalEntry.findMany({
-    where: { organizationId, entryDate: { gt: lte }, reversalOf: { sourceId: { not: null } } },
-    select: { reversalOf: { select: { sourceId: true } } },
-  });
-  const reversedLater = new Set(reversals.map((r) => r.reversalOf.sourceId));
 
   const documents = (docType, addBack) => prisma.document.findMany({
     where: {

@@ -189,6 +189,35 @@ describe('POST /bills', () => {
   });
 });
 
+describe('zero-total Bills', () => {
+  const free = () => [{ accountId: expense.id, description: 'Free sample', quantity: 1, unitPrice: 0 }];
+
+  it('rejects creating a Bill whose grand total is zero and saves nothing', async () => {
+    const before = await prisma.document.count({ where: { organizationId: owner.orgId, docType: 'BILL' } });
+    const res = await post(owner.headers, billBody({ referenceNo: 'ZERO-1', lines: free() }));
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('bill_total_zero');
+    expect(await prisma.document.count({ where: { organizationId: owner.orgId, docType: 'BILL' } })).toBe(before);
+  });
+
+  it('rejects a 100% discount on create, and an update that would zero a draft, leaving the draft unchanged', async () => {
+    const full = await post(owner.headers, billBody({
+      referenceNo: 'ZERO-2',
+      lines: [{ accountId: expense.id, description: 'Promo', quantity: 1, unitPrice: 100, discountPct: 100 }],
+    }));
+    expect(full.status).toBe(422);
+    expect(full.body.error.code).toBe('bill_total_zero');
+
+    const draft = await post(owner.headers, billBody({ referenceNo: 'ZERO-3' }));
+    const res = await request(app).patch(`/api/v1/bills/${draft.body.id}`).set(owner.headers).send({ version: 0, lines: free() });
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('bill_total_zero');
+    const stored = await prisma.document.findUniqueOrThrow({ where: { id: draft.body.id } });
+    expect(stored.version).toBe(0);
+    expect(stored.grandTotal.toString()).toBe('2500');
+  });
+});
+
 describe('PATCH /bills/:id', () => {
   const patch = (headers, id, body) => request(app).patch(`/api/v1/bills/${id}`).set(headers).send(body);
 

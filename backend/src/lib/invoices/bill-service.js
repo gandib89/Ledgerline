@@ -4,6 +4,7 @@ import { resolveLines, toDocumentLineData } from '../accounting/document-lines.j
 import { findFiscalYearForDate } from '../accounting/fiscal-year.js';
 import { notFound, conflict, businessRule } from '../accounting/errors.js';
 import { addDays } from './add-days.js';
+import { dec } from '../money.js';
 
 // Bill lines may only hit EXPENSE or ASSET accounts that are neither control
 // nor bank accounts: a purchase must never post straight to AP, VAT or cash.
@@ -14,6 +15,13 @@ function checkBillLineAccount(account) {
       'bill_line_account_not_allowed',
       `Account ${account.code} cannot be used on a Bill line — only expense or asset accounts that are not control or bank accounts`,
     );
+  }
+}
+
+// Mirrors the post-time rule (post-document.js) so a zero-total draft can never be saved.
+function requirePositiveTotal(totals) {
+  if (!dec(totals.grandTotal).gt(0)) {
+    throw businessRule('bill_total_zero', 'A Bill with a grand total of zero cannot be saved');
   }
 }
 
@@ -105,6 +113,7 @@ export async function createDraftBill(actor, input) {
 
     const lines = await resolveLines(tx, actor.organizationId, input.lines, { checkAccount: checkBillLineAccount });
     const totals = sumLines(lines);
+    requirePositiveTotal(totals);
 
     return writeUniqueReference(tx, { organizationId: actor.organizationId, partyId: party.id, referenceNo: input.referenceNo }, () => tx.document.create({
       data: {
@@ -166,6 +175,7 @@ export async function updateDraftBill(actor, documentId, expectedVersion, input)
 
     const lines = await resolveLines(tx, actor.organizationId, input.lines, { checkAccount: checkBillLineAccount });
     const totals = sumLines(lines);
+    requirePositiveTotal(totals);
 
     const result = await writeUniqueReference(tx, { organizationId: actor.organizationId, partyId: party.id, referenceNo, excludeId: documentId }, () => tx.document.updateMany({
       where: { id: documentId, organizationId: actor.organizationId, version: expectedVersion, status: 'DRAFT' },
