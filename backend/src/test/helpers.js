@@ -20,12 +20,14 @@ const ROLE_PERMISSIONS = {
   Owner: [
     'invoice.create', 'invoice.post', 'payment.create', 'journal.post',
     'bank.reconcile', 'report.view', 'audit.view', 'org.manage',
+    'bill.create', 'bill.post', 'supplier_payment.create',
   ],
   Accountant: [
     'invoice.create', 'invoice.post', 'payment.create', 'journal.post',
     'bank.reconcile', 'report.view', 'audit.view',
+    'bill.create', 'bill.post', 'supplier_payment.create',
   ],
-  Clerk: ['invoice.create', 'payment.create', 'report.view'],
+  Clerk: ['invoice.create', 'payment.create', 'report.view', 'bill.create'],
   Viewer: ['report.view'],
 };
 
