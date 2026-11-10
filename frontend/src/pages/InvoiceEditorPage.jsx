@@ -45,11 +45,11 @@ function formFromInvoice(invoice) {
   };
 }
 
-function InvoiceTotals({ preview, error, pending }) {
+export function InvoiceTotals({ preview, error, pending, title = 'Invoice totals' }) {
   return (
     <aside className="invoice-totals" aria-live="polite">
       <p className="eyebrow">Server calculation</p>
-      <h2>Invoice totals</h2>
+      <h2>{title}</h2>
       {pending ? <p className="muted-copy">Checking VAT and totals…</p> : error ? (
         <p className="field-error" role="alert">{error.message}</p>
       ) : !preview ? <p className="muted-copy">Complete the required fields to preview exact totals.</p> : (

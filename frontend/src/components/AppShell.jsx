@@ -16,6 +16,7 @@ const navigation = [
   ['receipts', 'Receipts', '/receipts'],
   ['group', 'Payables'],
   ['customers', 'Suppliers', '/suppliers'],
+  ['invoices', 'Bills', '/bills'],
   ['journals', 'Journal entries', '/journals'],
   ['banking', 'Banking', '/banking'],
   ['reports', 'Trial Balance', '/reports/trial-balance'],

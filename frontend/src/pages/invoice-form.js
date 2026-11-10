@@ -3,7 +3,7 @@ import { z } from 'zod';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const requiredUuid = (message) => z.string().uuid(message);
 
-const invoiceLineSchema = z.object({
+export const invoiceLineSchema = z.object({
   clientId: z.string(),
   accountId: requiredUuid('Revenue account is required'),
   description: z.string().trim().min(1, 'Description is required'),

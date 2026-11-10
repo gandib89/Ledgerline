@@ -172,6 +172,36 @@ registry.registerPath({
   responses: { 200: { description: 'OK', ...json(z.object({ invoice, journalEntry })) }, 422: errorResponse },
 });
 
+// ---- bills --------------------------------------------------------------------
+const bill = invoice.omit({ docType: true }).extend({ docType: z.literal('bill'), postingDate: dateStr(), dueDate: dateStr().nullable(), referenceNo: z.string().nullable() });
+const billBodyFields = { partyId: uuid(), referenceNo: z.string(), docDate: dateStr(), postingDate: dateStr().optional(), dueDate: dateStr().optional(), notes: z.string().optional(), lines: z.array(invoiceLineInput).min(1) };
+
+registry.registerPath({
+  method: 'post', path: '/api/v1/bills/preview', tags: ['Bills'], summary: 'Recompute totals for a set of Bill lines without persisting',
+  security: AUTH, request: { headers: tenantParams, body: { content: { 'application/json': { schema: z.object({ lines: z.array(invoiceLineInput) }) } } } },
+  responses: { 200: { description: 'OK', ...json(z.object({ totals: z.object({ grandTotal: money() }) })) }, 422: errorResponse },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/bills', tags: ['Bills'], summary: 'Create a draft Bill',
+  security: AUTH, request: { headers: tenantParams, body: { content: { 'application/json': { schema: z.object(billBodyFields) } } } },
+  responses: { 201: { description: 'Created', ...json(bill) }, 400: errorResponse, 422: errorResponse },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/bills', tags: ['Bills'], summary: 'List Bills',
+  security: AUTH, request: { headers: tenantParams, query: z.object({ partyId: uuid().optional(), status: z.string().optional(), page: z.number().optional() }) },
+  responses: { 200: { description: 'OK', ...json(z.array(bill)) } },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/bills/{id}', tags: ['Bills'], summary: 'Get a Bill',
+  security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }) },
+  responses: { 200: { description: 'OK', ...json(bill) }, 404: errorResponse },
+});
+registry.registerPath({
+  method: 'patch', path: '/api/v1/bills/{id}', tags: ['Bills'], summary: 'Edit a draft Bill (409 not_draft once posted)',
+  security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }), body: { content: { 'application/json': { schema: z.object({ ...billBodyFields, version: z.number() }).partial({ partyId: true, referenceNo: true, docDate: true }) } } } },
+  responses: { 200: { description: 'OK', ...json(bill) }, 404: errorResponse, 409: errorResponse },
+});
+
 // ---- journal entries ------------------------------------------------------------
 const manualLine = z.object({ accountId: uuid(), debit: z.number().min(0).default(0), credit: z.number().min(0).default(0), partyId: uuid().optional(), description: z.string().optional() });
 

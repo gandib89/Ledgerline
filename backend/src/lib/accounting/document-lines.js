@@ -18,7 +18,9 @@ export function toDocumentLineData({ discountAmount: _discountAmount, ...line })
 // Totals are never accepted from the client — only quantity/rate/discount/tax
 // code come in; taxableAmount, taxAmount, lineTotal are recomputed here from
 // scratch every time (§6 validation layers).
-export async function resolveLines(tx, organizationId, lineInputs) {
+// checkAccount(account) lets a caller (Bills) reject accounts its lines may not
+// use; it runs after the existence check so not-found behaviour is identical.
+export async function resolveLines(tx, organizationId, lineInputs, { checkAccount } = {}) {
   if (!lineInputs || lineInputs.length === 0) {
     // Kept as 'empty_invoice' verbatim from the pre-extraction code (moved
     // here unchanged from invoice-service.js) — credit notes reuse this same
@@ -39,6 +41,7 @@ export async function resolveLines(tx, organizationId, lineInputs) {
 
   for (const line of lineInputs) {
     if (!accountById.has(line.accountId)) throw notFound(`Account ${line.accountId} not found`);
+    checkAccount?.(accountById.get(line.accountId));
     if (line.taxCodeId && !taxCodeById.has(line.taxCodeId)) throw notFound(`Tax code ${line.taxCodeId} not found`);
   }
 

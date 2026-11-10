@@ -3,6 +3,9 @@ import { AppShell } from './components/AppShell.jsx';
 import { ProtectedRoute } from './components/ProtectedRoute.jsx';
 import { AccountsPage } from './pages/AccountsPage.jsx';
 import { SuppliersPage } from './pages/SuppliersPage.jsx';
+import { BillsPage } from './pages/BillsPage.jsx';
+import { BillEditorPage } from './pages/BillEditorPage.jsx';
+import { BillDetailPage } from './pages/BillDetailPage.jsx';
 import { CustomersPage } from './pages/CustomersPage.jsx';
 import { DashboardPage } from './pages/DashboardPage.jsx';
 import { LoginPage } from './pages/LoginPage.jsx';
@@ -37,6 +40,10 @@ function App() {
           <Route path="/accounts" element={<AccountsPage />} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/suppliers" element={<SuppliersPage />} />
+          <Route path="/bills" element={<BillsPage />} />
+          <Route path="/bills/new" element={<BillEditorPage />} />
+          <Route path="/bills/:id/edit" element={<BillEditorPage />} />
+          <Route path="/bills/:id" element={<BillDetailPage />} />
           <Route path="/invoices" element={<InvoicesPage />} />
           <Route path="/invoices/new" element={<InvoiceEditorPage />} />
           <Route path="/invoices/:id/edit" element={<InvoiceEditorPage />} />

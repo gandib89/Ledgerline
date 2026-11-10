@@ -25,7 +25,7 @@ function actorFrom(req) {
   return { userId: req.userId, organizationId: req.organizationId, roleId: req.roleId };
 }
 
-function serializeLine(line) {
+export function serializeLine(line) {
   return {
     id: line.id,
     lineNo: line.lineNo,
@@ -41,7 +41,7 @@ function serializeLine(line) {
   };
 }
 
-function serializeInvoice(doc) {
+export function serializeInvoice(doc) {
   return {
     id: doc.id,
     docType: 'invoice',
