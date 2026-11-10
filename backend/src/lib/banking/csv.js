@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { businessRule } from '../accounting/errors.js';
+import { dec } from '../money.js';
 
 export const MAX_STATEMENT_ROWS = 5000;
 
@@ -84,8 +85,8 @@ const NormalisedRowSchema = z.object({
   debit: z.string(),
   credit: z.string(),
   runningBalance: z.string().nullable(),
-}).refine((r) => !(Number(r.debit) > 0 && Number(r.credit) > 0), 'a row cannot have both a debit and a credit')
-  .refine((r) => Number(r.debit) > 0 || Number(r.credit) > 0, 'a row needs a nonzero debit or credit');
+}).refine((r) => !(dec(r.debit).gt(0) && dec(r.credit).gt(0)), 'a row cannot have both a debit and a credit')
+  .refine((r) => dec(r.debit).gt(0) || dec(r.credit).gt(0), 'a row needs a nonzero debit or credit');
 
 // columnMapping: { dateFormat: 'YYYY-MM-DD'|'DD/MM/YYYY',
 //   columns: { date, description, reference?, balance?, debit, credit } |
@@ -142,7 +143,7 @@ export function parseAndValidateStatement(csvText, columnMapping) {
         errors.push({ rowIndex: i, message: `Unparseable amount "${cell('amount')}"` });
         return;
       }
-      if (Number(amount) >= 0) credit = amount; else debit = amount.slice(1);
+      if (dec(amount).gte(0)) credit = amount; else debit = amount.slice(1);
     } else {
       const debitRaw = normaliseAmount(cell('debit'));
       const creditRaw = normaliseAmount(cell('credit'));
@@ -164,9 +165,7 @@ export function parseAndValidateStatement(csvText, columnMapping) {
   });
 
   if (errors.length > 0) {
-    const err = businessRule('invalid_statement_rows', 'One or more rows failed validation');
-    err.details = errors;
-    throw err;
+    throw businessRule('invalid_statement_rows', 'One or more rows failed validation', errors);
   }
 
   return rows;

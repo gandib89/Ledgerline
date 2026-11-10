@@ -88,6 +88,11 @@ describe('AppShell', () => {
 
     expect(await screen.findByRole('link', { name: 'Invoices' })).toHaveAttribute('href', '/invoices');
     expect(screen.getByRole('link', { name: 'Receipts' })).toHaveAttribute('href', '/receipts');
+    expect(screen.getByText('Payables')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Suppliers' })).toHaveAttribute('href', '/suppliers');
+    expect(screen.getByRole('link', { name: 'Bills' })).toHaveAttribute('href', '/bills');
+    expect(screen.getByRole('link', { name: 'Supplier payments' })).toHaveAttribute('href', '/supplier-payments/new');
+    expect(screen.getByRole('link', { name: 'AP Aging' })).toHaveAttribute('href', '/reports/ap-aging');
     expect(screen.getByRole('link', { name: 'Banking' })).toHaveAttribute('href', '/banking');
     expect(screen.getByRole('link', { name: 'Trial Balance' })).toHaveAttribute('href', '/reports/trial-balance');
     expect(screen.getByRole('link', { name: 'General Ledger' })).toHaveAttribute('href', '/reports/general-ledger');

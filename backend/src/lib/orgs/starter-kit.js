@@ -133,6 +133,10 @@ async function provisionTaxCodes(tx, organizationId) {
   const outputAccount = await tx.account.findUniqueOrThrow({
     where: { organizationId_code: { organizationId, code: '2200' } },
   });
+  // Bill lines claim input VAT here; Invoice lines keep using the output account.
+  const inputAccount = await tx.account.findUniqueOrThrow({
+    where: { organizationId_code: { organizationId, code: '2210' } },
+  });
 
   await tx.taxCode.upsert({
     where: { organizationId_code: { organizationId, code: 'VAT13' } },
@@ -141,6 +145,7 @@ async function provisionTaxCodes(tx, organizationId) {
       rate: '0.1300',
       type: 'VAT',
       outputAccountId: outputAccount.id,
+      inputAccountId: inputAccount.id,
       isActive: true,
     },
     create: {
@@ -150,6 +155,7 @@ async function provisionTaxCodes(tx, organizationId) {
       rate: '0.1300',
       type: 'VAT',
       outputAccountId: outputAccount.id,
+      inputAccountId: inputAccount.id,
     },
   });
 }

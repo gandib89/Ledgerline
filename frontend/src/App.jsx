@@ -2,6 +2,10 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell.jsx';
 import { ProtectedRoute } from './components/ProtectedRoute.jsx';
 import { AccountsPage } from './pages/AccountsPage.jsx';
+import { SuppliersPage } from './pages/SuppliersPage.jsx';
+import { BillsPage } from './pages/BillsPage.jsx';
+import { BillEditorPage } from './pages/BillEditorPage.jsx';
+import { BillDetailPage } from './pages/BillDetailPage.jsx';
 import { CustomersPage } from './pages/CustomersPage.jsx';
 import { DashboardPage } from './pages/DashboardPage.jsx';
 import { LoginPage } from './pages/LoginPage.jsx';
@@ -10,6 +14,7 @@ import { InvoiceDetailPage } from './pages/InvoiceDetailPage.jsx';
 import { InvoiceEditorPage } from './pages/InvoiceEditorPage.jsx';
 import { InvoicesPage } from './pages/InvoicesPage.jsx';
 import { TrialBalancePage } from './pages/TrialBalancePage.jsx';
+import { ApAgingPage } from './pages/ApAgingPage.jsx';
 import { ArAgingPage } from './pages/ArAgingPage.jsx';
 import { BalanceSheetPage } from './pages/BalanceSheetPage.jsx';
 import { BankReconciliationPage } from './pages/BankReconciliationPage.jsx';
@@ -23,6 +28,8 @@ import { JournalEntriesPage } from './pages/JournalEntriesPage.jsx';
 import { CreditNotePage } from './pages/CreditNotePage.jsx';
 import { CreditNoteDetailPage } from './pages/CreditNoteDetailPage.jsx';
 import { ReceiptDetailPage } from './pages/ReceiptDetailPage.jsx';
+import { SupplierPaymentPage } from './pages/SupplierPaymentPage.jsx';
+import { SupplierPaymentDetailPage } from './pages/SupplierPaymentDetailPage.jsx';
 import { TeamPage } from './pages/TeamPage.jsx';
 
 function App() {
@@ -35,6 +42,13 @@ function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/accounts" element={<AccountsPage />} />
           <Route path="/customers" element={<CustomersPage />} />
+          <Route path="/suppliers" element={<SuppliersPage />} />
+          <Route path="/bills" element={<BillsPage />} />
+          <Route path="/bills/new" element={<BillEditorPage />} />
+          <Route path="/bills/:id/edit" element={<BillEditorPage />} />
+          <Route path="/bills/:id" element={<BillDetailPage />} />
+          <Route path="/supplier-payments/new" element={<SupplierPaymentPage />} />
+          <Route path="/supplier-payments/:id" element={<SupplierPaymentDetailPage />} />
           <Route path="/invoices" element={<InvoicesPage />} />
           <Route path="/invoices/new" element={<InvoiceEditorPage />} />
           <Route path="/invoices/:id/edit" element={<InvoiceEditorPage />} />
@@ -47,6 +61,7 @@ function App() {
           <Route path="/banking" element={<BankingPage />} />
           <Route path="/reports/trial-balance" element={<TrialBalancePage />} />
           <Route path="/reports/general-ledger" element={<GeneralLedgerPage />} />
+          <Route path="/reports/ap-aging" element={<ApAgingPage />} />
           <Route path="/reports/ar-aging" element={<ArAgingPage />} />
           <Route path="/reports/profit-loss" element={<ProfitLossPage />} />
           <Route path="/reports/balance-sheet" element={<BalanceSheetPage />} />

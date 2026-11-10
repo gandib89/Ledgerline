@@ -356,6 +356,7 @@ model Document {
   docType        DocType
   docNo          String?
   docDate        DateTime  @db.Date
+  postingDate    DateTime  @db.Date
   dueDate        DateTime? @db.Date
   partyId        String?
 

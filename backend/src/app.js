@@ -12,9 +12,11 @@ import authRouter from './routes/auth.js';
 import orgsRouter from './routes/orgs.js';
 import mastersRouter from './routes/masters.js';
 import invoicesRouter from './routes/invoices.js';
+import billsRouter from './routes/bills.js';
 import journalEntriesRouter from './routes/journal-entries.js';
 import reportsRouter from './routes/reports.js';
 import receiptsRouter from './routes/receipts.js';
+import supplierPaymentsRouter from './routes/supplier-payments.js';
 import creditNotesRouter from './routes/credit-notes.js';
 import bankingRouter from './routes/banking.js';
 import auditRouter from './routes/audit.js';
@@ -68,9 +70,11 @@ app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/orgs', orgsRouter);
 app.use('/api/v1', mastersRouter);
 app.use('/api/v1', invoicesRouter);
+app.use('/api/v1', billsRouter);
 app.use('/api/v1', journalEntriesRouter);
 app.use('/api/v1', reportsRouter);
 app.use('/api/v1', receiptsRouter);
+app.use('/api/v1', supplierPaymentsRouter);
 app.use('/api/v1', creditNotesRouter);
 app.use('/api/v1', bankingRouter);
 app.use('/api/v1', auditRouter);
@@ -103,6 +107,7 @@ app.use((err, req, res, _next) => {
     error: {
       code: err.code || 'INTERNAL_ERROR',
       message: err.status ? (err.message || 'Something went wrong') : 'Something went wrong',
+      ...(err.status && err.details ? { details: err.details } : {}),
       requestId: req.id,
     },
   });

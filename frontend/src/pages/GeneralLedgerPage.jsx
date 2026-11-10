@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useOutletContext } from 'react-router-dom';
 import { AsyncState } from '../components/AsyncState.jsx';
@@ -8,11 +8,12 @@ import { todayInNepal } from '../lib/date.js';
 
 export function GeneralLedgerPage() {
   const { activeOrganizationId, currentFiscalYear } = useOutletContext();
-  const [accountId, setAccountId] = useState('');
+  // Selection is scoped to the org it was made in, so switching org resets it without an effect.
+  const [selection, setSelection] = useState({ organizationId: activeOrganizationId, accountId: '' });
+  const accountId = selection.organizationId === activeOrganizationId ? selection.accountId : '';
   const [from, setFrom] = useState(currentFiscalYear?.startDate ?? todayInNepal());
   const [to, setTo] = useState(todayInNepal());
   const accounts = useQuery({ queryKey: ['accounts', activeOrganizationId], queryFn: () => apiRequest('/accounts'), enabled: Boolean(activeOrganizationId) });
-  useEffect(() => setAccountId(''), [activeOrganizationId]);
   const ledger = useQuery({
     queryKey: ['general-ledger', activeOrganizationId, accountId, from, to],
     queryFn: () => apiRequest(`/reports/general-ledger?accountId=${accountId}&from=${from}&to=${to}`),
@@ -22,7 +23,7 @@ export function GeneralLedgerPage() {
   return (
     <div className="accounting-page">
       <div className="page-heading"><div><p className="eyebrow">Account activity</p><h1>General Ledger</h1><p>Trace every account movement back to its journal and source document.</p></div></div>
-      <div className="filter-bar ledger-filters"><label>Account<select value={accountId} onChange={(event) => setAccountId(event.target.value)}><option value="">Select account</option>{accounts.data?.filter((account) => account.isActive).map((account) => <option key={account.id} value={account.id}>{account.code} - {account.name}</option>)}</select></label><label>From<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label>To<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label></div>
+      <div className="filter-bar ledger-filters"><label>Account<select value={accountId} onChange={(event) => setSelection({ organizationId: activeOrganizationId, accountId: event.target.value })}><option value="">Select account</option>{accounts.data?.filter((account) => account.isActive).map((account) => <option key={account.id} value={account.id}>{account.code} - {account.name}</option>)}</select></label><label>From<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label>To<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label></div>
       {accounts.isPending ? <AsyncState title="Loading accounts" message="Preparing the account selector." />
         : accounts.isError ? <AsyncState tone="error" title="Accounts unavailable" message={accounts.error.message} />
           : !accountId ? <AsyncState tone="empty" title="Select an account" message="Ledger movements will appear here." />

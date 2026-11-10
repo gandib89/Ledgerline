@@ -58,6 +58,9 @@ export async function postReceipt(actor, input, tx = prisma) {
       if (invoice.docType !== 'INVOICE') {
         throw businessRule('not_an_invoice', `Document ${invoice.id} is not an invoice`);
       }
+      if (invoice.partyId !== party.id) {
+        throw businessRule('party_mismatch', `Invoice ${invoice.id} belongs to a different party than the receipt`);
+      }
       if (!['POSTED', 'PARTIALLY_PAID'].includes(invoice.status)) {
         throw businessRule('invoice_not_open', `Invoice ${invoice.id} is not open for allocation (status ${invoice.status})`);
       }
@@ -94,7 +97,7 @@ export async function postReceipt(actor, input, tx = prisma) {
     const documentDraft = await tx.document.create({
       data: {
         organizationId: actor.organizationId, fiscalYearId: fiscalYear.id,
-        docType: 'RECEIPT', docNo, docDate, partyId: party.id,
+        docType: 'RECEIPT', docNo, docDate, postingDate: docDate, partyId: party.id,
         referenceNo: referenceNo ?? null, notes: notes ?? null,
         grandTotal: amount, allocatedAmount: allocatedTotal, outstandingAmount: outstandingOnReceipt,
         status: 'POSTED', createdById: actor.userId, postedAt: new Date(), postedById: actor.userId,

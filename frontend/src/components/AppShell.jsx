@@ -14,6 +14,11 @@ const navigation = [
   ['customers', 'Customers', '/customers'],
   ['invoices', 'Invoices', '/invoices'],
   ['receipts', 'Receipts', '/receipts'],
+  ['group', 'Payables'],
+  ['customers', 'Suppliers', '/suppliers'],
+  ['invoices', 'Bills', '/bills'],
+  ['receipts', 'Supplier payments', '/supplier-payments/new'],
+  ['reports', 'AP Aging', '/reports/ap-aging'],
   ['journals', 'Journal entries', '/journals'],
   ['banking', 'Banking', '/banking'],
   ['reports', 'Trial Balance', '/reports/trial-balance'],
@@ -98,7 +103,9 @@ export function AppShell() {
 
         <div className="workspace-label">Workspace</div>
         <nav className="primary-nav" aria-label="Primary navigation">
-          {navigation.map(([icon, label, to]) => (
+          {navigation.map(([icon, label, to]) => (icon === 'group' ? (
+            <div className="nav-group-label" key={label}>{label}</div>
+          ) : (
             <NavLink
               className={({ isActive }) => `nav-link ${isActive && to ? 'nav-link-active' : ''}`}
               key={label}
@@ -109,7 +116,7 @@ export function AppShell() {
               <span>{label}</span>
               {!to && <span className="nav-soon">Soon</span>}
             </NavLink>
-          ))}
+          )))}
         </nav>
 
         <div className="sidebar-note">

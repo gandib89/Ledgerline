@@ -3,12 +3,7 @@ import { sumLines } from '../accounting/line-math.js';
 import { resolveLines, toDocumentLineData } from '../accounting/document-lines.js';
 import { findFiscalYearForDate } from '../accounting/fiscal-year.js';
 import { notFound, conflict } from '../accounting/errors.js';
-
-function addDays(date, days) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
+import { addDays } from './add-days.js';
 
 // Live totals for the invoice editor — same recomputation as create/update,
 // nothing persisted. Backs POST /invoices/preview.
@@ -35,6 +30,7 @@ export async function createDraftInvoice(actor, input) {
         fiscalYearId: fiscalYear.id,
         docType: 'INVOICE',
         docDate,
+        postingDate: docDate,
         dueDate,
         partyId: party.id,
         referenceNo: input.referenceNo ?? null,
@@ -91,6 +87,7 @@ export async function updateDraftInvoice(actor, documentId, expectedVersion, inp
       data: {
         fiscalYearId: fiscalYear.id,
         docDate,
+        postingDate: docDate,
         dueDate,
         partyId: party.id,
         referenceNo: input.referenceNo ?? existing.referenceNo,

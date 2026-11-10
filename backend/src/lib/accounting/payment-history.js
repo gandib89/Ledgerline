@@ -25,3 +25,30 @@ export async function getInvoicePaymentHistory(tx, organizationId, invoiceId) {
     })),
   };
 }
+
+// Bill variant of the above: the Supplier Payments applied to a Bill.
+export async function getBillPaymentHistory(tx, organizationId, billId) {
+  const bill = await tx.document.findFirst({
+    where: { id: billId, organizationId, docType: 'BILL' },
+  });
+  if (!bill) throw notFound('Bill not found');
+
+  const allocations = await tx.paymentAllocation.findMany({
+    where: { organizationId, targetDocumentId: billId },
+    include: { paymentDocument: true },
+    orderBy: { allocatedAt: 'desc' },
+  });
+
+  return {
+    billId,
+    outstandingAmount: bill.outstandingAmount.toFixed(2),
+    payments: allocations.map(({ amount, allocatedAt, paymentDocument }) => ({
+      supplierPaymentId: paymentDocument.id,
+      supplierPaymentNo: paymentDocument.docNo,
+      docDate: paymentDocument.docDate.toISOString().slice(0, 10),
+      referenceNo: paymentDocument.referenceNo,
+      amount: amount.toFixed(2),
+      allocatedAt: allocatedAt.toISOString(),
+    })),
+  };
+}

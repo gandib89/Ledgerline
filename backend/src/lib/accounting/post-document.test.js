@@ -96,7 +96,7 @@ afterAll(async () => {
 // Draft a document whose lines are already computed via computeLine, mirroring
 // what the invoice service (Day 3 step 5) will do at create/update time —
 // postDocument itself never recomputes qty * rate, only reads what's stored.
-async function makeDraftInvoice({ docDate, lineInputs, grandTotalOverride }) {
+async function makeDraftInvoice({ docDate, postingDate = docDate, lineInputs, grandTotalOverride }) {
   const computed = lineInputs.map((input) => ({ input, computed: computeLine(input) }));
   const totals = sumLines(computed.map((c) => c.computed));
 
@@ -106,6 +106,7 @@ async function makeDraftInvoice({ docDate, lineInputs, grandTotalOverride }) {
       fiscalYearId: fiscalYear.id,
       docType: 'INVOICE',
       docDate,
+      postingDate,
       partyId: party.id,
       status: 'DRAFT',
       subtotal: totals.subtotal,
@@ -214,6 +215,34 @@ describe('postDocument — invoice', () => {
 
     await expect(postDocument(doc.id, actor)).rejects.toMatchObject({ status: 422, code: 'period_locked' });
 
+    const untouched = await prisma.document.findUniqueOrThrow({ where: { id: doc.id } });
+    expect(untouched.status).toBe('DRAFT');
+  });
+
+  // Posting Date, not docDate, decides the period, entryDate and (via the DB
+  // trigger) whether the entry may be written at all.
+  it('posts a document dated in a locked period when its Posting Date is in an open one', async () => {
+    const doc = await makeDraftInvoice({
+      docDate: new Date('2025-08-20'), // locked Bhadra
+      postingDate: new Date('2025-07-23'), // open Shrawan
+      lineInputs: [{ quantity: 1, unitPrice: '500.00', discountPct: 0, taxRate: '0.13' }],
+    });
+
+    const entry = await postDocument(doc.id, actor);
+
+    const openPeriod = await prisma.accountingPeriod.findFirstOrThrow({ where: { label: 'Shrawan', fiscalYearId: fiscalYear.id } });
+    expect(entry.periodId).toBe(openPeriod.id);
+    expect(entry.entryDate.toISOString().slice(0, 10)).toBe('2025-07-23');
+  });
+
+  it('rejects a document dated in an open period when its Posting Date is in a locked one', async () => {
+    const doc = await makeDraftInvoice({
+      docDate: new Date('2025-07-23'), // open Shrawan
+      postingDate: new Date('2025-08-20'), // locked Bhadra
+      lineInputs: [{ quantity: 1, unitPrice: '500.00', discountPct: 0, taxRate: '0.13' }],
+    });
+
+    await expect(postDocument(doc.id, actor)).rejects.toMatchObject({ status: 422, code: 'period_locked' });
     const untouched = await prisma.document.findUniqueOrThrow({ where: { id: doc.id } });
     expect(untouched.status).toBe('DRAFT');
   });

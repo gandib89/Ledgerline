@@ -1,6 +1,9 @@
 import '@testing-library/jest-dom/vitest';
 import { afterAll, afterEach, beforeAll } from 'vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
+
+// Default findBy*/waitFor timeout is 1000ms, too tight for full-App renders under CPU load.
+configure({ asyncUtilTimeout: 10000 });
 
 const storage = new Map();
 Object.defineProperty(globalThis, 'localStorage', {

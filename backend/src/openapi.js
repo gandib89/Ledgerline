@@ -172,6 +172,41 @@ registry.registerPath({
   responses: { 200: { description: 'OK', ...json(z.object({ invoice, journalEntry })) }, 422: errorResponse },
 });
 
+// ---- bills --------------------------------------------------------------------
+const bill = invoice.omit({ docType: true }).extend({ docType: z.literal('bill'), postingDate: dateStr(), dueDate: dateStr().nullable(), referenceNo: z.string().nullable() });
+const billBodyFields = { partyId: uuid(), referenceNo: z.string(), docDate: dateStr(), postingDate: dateStr().optional(), dueDate: dateStr().optional(), notes: z.string().optional(), lines: z.array(invoiceLineInput).min(1) };
+
+registry.registerPath({
+  method: 'post', path: '/api/v1/bills/preview', tags: ['Bills'], summary: 'Recompute totals for a set of Bill lines without persisting',
+  security: AUTH, request: { headers: tenantParams, body: { content: { 'application/json': { schema: z.object({ lines: z.array(invoiceLineInput) }) } } } },
+  responses: { 200: { description: 'OK', ...json(z.object({ totals: z.object({ grandTotal: money() }) })) }, 422: errorResponse },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/bills', tags: ['Bills'], summary: 'Create a draft Bill',
+  security: AUTH, request: { headers: tenantParams, body: { content: { 'application/json': { schema: z.object(billBodyFields) } } } },
+  responses: { 201: { description: 'Created', ...json(bill) }, 400: errorResponse, 422: errorResponse },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/bills', tags: ['Bills'], summary: 'List Bills',
+  security: AUTH, request: { headers: tenantParams, query: z.object({ partyId: uuid().optional(), status: z.string().optional(), page: z.number().optional() }) },
+  responses: { 200: { description: 'OK', ...json(z.array(bill)) } },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/bills/{id}', tags: ['Bills'], summary: 'Get a Bill',
+  security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }) },
+  responses: { 200: { description: 'OK', ...json(bill) }, 404: errorResponse },
+});
+registry.registerPath({
+  method: 'patch', path: '/api/v1/bills/{id}', tags: ['Bills'], summary: 'Edit a draft Bill (409 not_draft once posted)',
+  security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }), body: { content: { 'application/json': { schema: z.object({ ...billBodyFields, version: z.number() }).partial({ partyId: true, referenceNo: true, docDate: true }) } } } },
+  responses: { 200: { description: 'OK', ...json(bill) }, 404: errorResponse, 409: errorResponse },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/bills/{id}/post', tags: ['Bills'], summary: 'Post a draft Bill — creates its journal entry and BILL number (bill.post)',
+  security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }) },
+  responses: { 200: { description: 'OK', ...json(z.object({ bill, journalEntry })) }, 404: errorResponse, 409: errorResponse, 422: errorResponse },
+});
+
 // ---- journal entries ------------------------------------------------------------
 const manualLine = z.object({ accountId: uuid(), debit: z.number().min(0).default(0), credit: z.number().min(0).default(0), partyId: uuid().optional(), description: z.string().optional() });
 
@@ -215,6 +250,32 @@ registry.registerPath({
   method: 'get', path: '/api/v1/receipts/{id}', tags: ['Receipts'], summary: 'Get a receipt',
   security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }) },
   responses: { 200: { description: 'OK', ...json(receipt) }, 404: errorResponse },
+});
+
+// ---- supplier payments ----------------------------------------------------------
+const supplierPayment = z.object({ id: uuid(), docType: z.literal('supplier_payment'), docNo: z.string(), grandTotal: money(), allocatedAmount: money(), outstandingAmount: money() });
+
+registry.registerPath({
+  method: 'post', path: '/api/v1/supplier-payments', tags: ['Supplier Payments'], summary: 'Pay a Supplier and allocate against open Bills (supplier_payment.create, Idempotency-Key required)',
+  security: AUTH,
+  request: {
+    headers: [...tenantParams, z.string().openapi({ param: { name: 'Idempotency-Key', in: 'header', required: true } })],
+    body: { content: { 'application/json': { schema: z.object({
+      partyId: uuid(), docDate: dateStr(), paidFromAccountId: uuid(), amount: z.number().positive(),
+      allocations: z.array(z.object({ billId: uuid(), amount: z.number().positive() })),
+    }) } } },
+  },
+  responses: { 201: { description: 'Created', ...json(z.object({ supplierPayment, journalEntry })) }, 400: errorResponse, 404: errorResponse, 422: errorResponse },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/supplier-payments/{id}', tags: ['Supplier Payments'], summary: 'Get a Supplier Payment',
+  security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }) },
+  responses: { 200: { description: 'OK', ...json(supplierPayment) }, 404: errorResponse },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/bills/{id}/payments', tags: ['Bills'], summary: 'Supplier Payments applied to a Bill',
+  security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }) },
+  responses: { 200: { description: 'OK', ...json(z.object({ billId: uuid(), outstandingAmount: money(), payments: z.array(z.object({ supplierPaymentId: uuid(), supplierPaymentNo: z.string(), docDate: dateStr(), amount: money() })) })) }, 404: errorResponse },
 });
 
 // ---- credit notes -------------------------------------------------------------
@@ -299,9 +360,14 @@ registry.registerPath({
   responses: { 200: { description: 'OK', ...json(z.object({ rows: z.array(z.object({ code: z.string(), debitBalance: money(), creditBalance: money() })), totals: z.object({ debit: money(), credit: money() }), integrity })) } },
 });
 registry.registerPath({
-  method: 'get', path: '/api/v1/reports/ar-aging', tags: ['Reports'], summary: 'AR aging buckets, self-checked against the control account',
-  security: AUTH, request: { headers: tenantParams, query: z.object({ asOf: dateStr().optional() }) },
+  method: 'get', path: '/api/v1/reports/ar-aging', tags: ['Reports'], summary: "AR aging as of today (Nepal), net of unapplied receipts, self-checked against the control account",
+  security: AUTH, request: { headers: tenantParams },
   responses: { 200: { description: 'OK', ...json(z.object({ rows: z.array(z.object({ partyId: uuid(), total: money() })), totals: z.object({ grandTotal: money() }), integrity: z.object({ balanced: z.boolean(), arControlBalance: money() }) })) } },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/reports/ap-aging', tags: ['Reports'], summary: "AP aging as of today (Nepal), net of unapplied Supplier Payments, self-checked against the Accounts Payable (2100) balance",
+  security: AUTH, request: { headers: tenantParams },
+  responses: { 200: { description: 'OK', ...json(z.object({ rows: z.array(z.object({ partyId: uuid(), total: money() })), totals: z.object({ grandTotal: money() }), integrity: z.object({ balanced: z.boolean(), apControlBalance: money() }) })) } },
 });
 registry.registerPath({
   method: 'get', path: '/api/v1/reports/general-ledger', tags: ['Reports'], summary: 'Running-balance ledger for one account over a date range',

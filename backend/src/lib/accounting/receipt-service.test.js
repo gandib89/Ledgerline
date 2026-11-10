@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma } from '../../db/client.js';
 import { postDocument } from './post-document.js';
 import { postReceipt } from './receipt-service.js';
+import { reverseEntry } from './reverse-entry.js';
 import { computeLine, sumLines } from './line-math.js';
 import { dec } from '../money.js';
 
@@ -67,7 +68,7 @@ async function postInvoice({ docDate, quantity, unitPrice }) {
   const totals = sumLines([computed]);
   const doc = await prisma.document.create({
     data: {
-      organizationId: org.id, fiscalYearId: fiscalYear.id, docType: 'INVOICE', docDate, partyId: party.id, status: 'DRAFT',
+      organizationId: org.id, fiscalYearId: fiscalYear.id, docType: 'INVOICE', docDate, postingDate: docDate, partyId: party.id, status: 'DRAFT',
       subtotal: totals.subtotal, discountAmount: totals.discountAmount, taxableAmount: totals.taxableAmount,
       taxAmount: totals.taxAmount, grandTotal: totals.grandTotal,
       lines: { create: [{ lineNo: 1, description: 'Line 1', accountId: salesAccount.id, quantity, unitPrice, discountPct: 0, taxableAmount: computed.taxableAmount, taxAmount: computed.taxAmount, lineTotal: computed.lineTotal }] },
@@ -195,4 +196,65 @@ describe('postReceipt — CONC-1: concurrent over-allocation is impossible', () 
     const totalCredit = allLines.reduce((t, l) => t.plus(l.credit), dec(0));
     expect(totalDebit.toFixed(4)).toBe(totalCredit.toFixed(4));
   });
+});
+
+describe('postReceipt - allocations stay within one Customer', () => {
+  it('rejects allocating a receipt to an invoice of another Customer and writes nothing', async () => {
+    const invoice = await postInvoice({ docDate: new Date('2025-07-24'), quantity: 1, unitPrice: '5000.00' });
+    const other = await prisma.party.create({ data: { organizationId: org.id, type: 'CUSTOMER', code: 'CUS-002', name: 'Other Customer' } });
+    const counts = async () => [
+      await prisma.document.count({ where: { organizationId: org.id } }),
+      await prisma.paymentAllocation.count({ where: { organizationId: org.id } }),
+      await prisma.journalEntry.count({ where: { organizationId: org.id } }),
+    ];
+    const before = await counts();
+
+    await expect(
+      postReceipt(actor, {
+        partyId: other.id, docDate: '2025-07-28', depositAccountId: cashAccount.id, amount: 5000,
+        allocations: [{ invoiceId: invoice.id, amount: 5000 }],
+      })
+    ).rejects.toMatchObject({ status: 422, code: 'party_mismatch' });
+
+    expect(await counts()).toEqual(before);
+    const untouched = await prisma.document.findUniqueOrThrow({ where: { id: invoice.id } });
+    expect(untouched.outstandingAmount.toFixed(2)).toBe('5000.00');
+  });
+});
+
+describe('reverseEntry (receipt) - locks target invoices in id order', () => {
+  it('reversing a receipt while another receipt allocates to the same invoices in the opposite order never deadlocks', async () => {
+    const [invA, invB] = (await Promise.all([
+      postInvoice({ docDate: new Date('2025-07-25'), quantity: 1, unitPrice: '1000000.00' }),
+      postInvoice({ docDate: new Date('2025-07-25'), quantity: 1, unitPrice: '1000000.00' }),
+    ])).sort((x, y) => (x.id < y.id ? -1 : 1));
+    const ROUNDS = 8;
+    const PAIRS = 4;
+    const receiptInput = (invoices) => ({
+      partyId: party.id, docDate: '2025-07-28', depositAccountId: cashAccount.id, amount: 20,
+      allocations: invoices.map((i) => ({ invoiceId: i.id, amount: 10 })),
+    });
+
+    for (let round = 0; round < ROUNDS; round += 1) {
+      // Reversal order of the stored allocations is descending (B then A);
+      // the competing receipt locks ascending (A then B).
+      const toReverse = [];
+      for (let i = 0; i < PAIRS; i += 1) toReverse.push(await postReceipt(actor, receiptInput([invB, invA])));
+
+      const results = await Promise.allSettled([
+        ...toReverse.map((r) => reverseEntry(r.journalEntry.id, { reason: 'conc', reversalDate: '2025-07-29' }, actor)),
+        ...toReverse.map(() => postReceipt(actor, receiptInput([invA, invB]))),
+      ]);
+      expect(results.filter((r) => r.status === 'rejected').map((r) => r.reason?.message)).toEqual([]);
+    }
+
+    // Outstanding = total - live allocations, per invoice.
+    for (const inv of [invA, invB]) {
+      const fresh = await prisma.document.findUniqueOrThrow({ where: { id: inv.id } });
+      const allocs = await prisma.paymentAllocation.findMany({ where: { targetDocumentId: inv.id } });
+      const live = allocs.reduce((t, a) => t.plus(a.amount), dec(0));
+      expect(fresh.allocatedAmount.toFixed(2)).toBe(live.toFixed(2));
+      expect(fresh.outstandingAmount.toFixed(2)).toBe(dec('1000000').minus(live).toFixed(2));
+    }
+  }, 60000);
 });

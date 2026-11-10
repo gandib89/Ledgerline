@@ -1,4 +1,5 @@
 import { prisma } from '../../db/client.js';
+import { Prisma } from '../../generated/prisma/index.js';
 import { nextEntryNumber } from './document-numbering.js';
 import { assertPeriodOpen } from './period-lock.js';
 import { findFiscalYearForDate } from './fiscal-year.js';
@@ -48,6 +49,17 @@ export async function reverseEntry(entryId, { reason, reversalDate }, actor) {
       });
     }
 
+    // Take the source document's locks (and, for a receipt, every target
+    // invoice's) BEFORE the entry-number counter: postReceipt locks invoices
+    // first and the counter second, so locking in the other order deadlocks.
+    let sourceDocument = null;
+    if (original.sourceId) {
+      const [doc] = await tx.$queryRaw`
+        SELECT * FROM "Document" WHERE id = ${original.sourceId} AND "organizationId" = ${actor.organizationId} FOR UPDATE
+      `;
+      if (doc) sourceDocument = await cascadeReversal(tx, actor, original.documentType, doc);
+    }
+
     // Mechanical debit<->credit swap, not a POSTING_RULES entry — this isn't
     // a rule keyed by document type, it's the same transform for every entry.
     const swappedLines = originalLines.map((l) => ({
@@ -79,14 +91,6 @@ export async function reverseEntry(entryId, { reason, reversalDate }, actor) {
     // carve-out only allows this exact status transition, nothing else.
     await tx.$executeRaw`UPDATE "JournalEntry" SET status = 'REVERSED' WHERE id = ${original.id}`;
 
-    let sourceDocument = null;
-    if (original.sourceId) {
-      const [doc] = await tx.$queryRaw`
-        SELECT * FROM "Document" WHERE id = ${original.sourceId} AND "organizationId" = ${actor.organizationId} FOR UPDATE
-      `;
-      if (doc) sourceDocument = await cascadeReversal(tx, actor, original.documentType, doc);
-    }
-
     return { original: { ...original, status: 'REVERSED' }, reversal, sourceDocument };
   });
 }
@@ -108,12 +112,36 @@ async function cascadeReversal(tx, actor, documentType, doc) {
     });
   }
 
-  if (documentType === 'receipt') {
-    const allocations = await tx.paymentAllocation.findMany({ where: { paymentDocumentId: doc.id } });
+  if (documentType === 'bill') {
+    // The Bill row is already locked (reverseEntry took it before the entry
+    // counter). Any allocation row means a Supplier Payment still covers it.
+    const applied = await tx.paymentAllocation.count({ where: { organizationId: actor.organizationId, targetDocumentId: doc.id } });
+    if (applied > 0 || dec(doc.allocatedAmount).gt(0)) {
+      throw businessRule('cannot_reverse_bill_with_payments', `Bill ${doc.id} has payments applied — reverse the Supplier Payment first`);
+    }
+    return tx.document.update({
+      where: { id: doc.id },
+      data: { status: 'REVERSED', outstandingAmount: 0, version: { increment: 1 } },
+    });
+  }
+
+  // A Supplier Payment un-applies exactly like a Receipt: its targets are Bills
+  // rather than Invoices, and the same id-ordered locking applies.
+  if (documentType === 'receipt' || documentType === 'supplierPayment') {
+    const allocations = await tx.paymentAllocation.findMany({ where: { organizationId: actor.organizationId, paymentDocumentId: doc.id } });
+    // Lock every target invoice in one id-ordered query - the same order
+    // postReceipt locks in, so a reversal and a receipt touching the same
+    // invoices never deadlock. Per-allocation locks would follow insert order.
+    const invoiceIds = [...new Set(allocations.map((a) => a.targetDocumentId))];
+    const lockedInvoices = invoiceIds.length === 0 ? [] : await tx.$queryRaw`
+      SELECT * FROM "Document"
+      WHERE id IN (${Prisma.join(invoiceIds)}) AND "organizationId" = ${actor.organizationId}
+      ORDER BY id
+      FOR UPDATE
+    `;
+    const invoicesById = new Map(lockedInvoices.map((d) => [d.id, d]));
     for (const alloc of allocations) {
-      const [invoice] = await tx.$queryRaw`
-        SELECT * FROM "Document" WHERE id = ${alloc.targetDocumentId} AND "organizationId" = ${actor.organizationId} FOR UPDATE
-      `;
+      const invoice = invoicesById.get(alloc.targetDocumentId);
       if (!invoice) continue;
       const newOutstanding = add(invoice.outstandingAmount, alloc.amount);
       const newAllocated = sub(invoice.allocatedAmount, alloc.amount);
@@ -127,7 +155,7 @@ async function cascadeReversal(tx, actor, documentType, doc) {
         },
       });
     }
-    await tx.paymentAllocation.deleteMany({ where: { paymentDocumentId: doc.id } });
+    await tx.paymentAllocation.deleteMany({ where: { organizationId: actor.organizationId, paymentDocumentId: doc.id } });
     return tx.document.update({
       where: { id: doc.id },
       data: { status: 'REVERSED', outstandingAmount: 0, version: { increment: 1 } },

@@ -39,6 +39,30 @@ function invoice(document) {
 }
 
 
+// Mirror of invoice: expense/asset debits per line, input VAT debited grouped
+// per account, Accounts Payable credited for the grand total against the Supplier.
+function bill(document) {
+  const lines = [];
+  for (const docLine of document.lines) {
+    if (isZero(docLine.taxableAmount)) continue; // a zero line would break jl_sign_check
+    lines.push(line({ accountId: docLine.accountId, debit: docLine.taxableAmount, description: docLine.description }));
+  }
+
+  const taxByAccount = new Map();
+  for (const docLine of document.lines) {
+    if (!docLine.taxAccountId || isZero(docLine.taxAmount)) continue;
+    taxByAccount.set(docLine.taxAccountId, add(taxByAccount.get(docLine.taxAccountId) ?? 0, docLine.taxAmount));
+  }
+  for (const [taxAccountId, taxAmount] of taxByAccount) {
+    lines.push(line({ accountId: taxAccountId, debit: taxAmount, description: 'VAT Receivable (Input)' }));
+  }
+
+  lines.push(
+    line({ accountId: document.apAccountId, credit: document.grandTotal, partyId: document.partyId, description: 'Accounts Payable' })
+  );
+  return lines.map((l, i) => ({ ...l, lineNumber: i + 1 }));
+}
+
 function manual(document) {
   return document.lines.map((docLine, i) => ({
     accountId: docLine.accountId,
@@ -54,6 +78,17 @@ function receipt(document) {
   const lines = [
     line({ accountId: document.depositAccountId, debit: document.amount, description: 'Customer receipt' }),
     line({ accountId: document.arAccountId, credit: document.amount, partyId: document.partyId, description: 'Accounts Receivable' }),
+  ];
+  return lines.map((l, i) => ({ ...l, lineNumber: i + 1 }));
+}
+
+
+// Mirror of receipt: Accounts Payable debited against the Supplier, the
+// paid-from account credited.
+function supplierPayment(document) {
+  const lines = [
+    line({ accountId: document.apAccountId, debit: document.amount, partyId: document.partyId, description: 'Accounts Payable' }),
+    line({ accountId: document.paidFromAccountId, credit: document.amount, description: 'Supplier payment' }),
   ];
   return lines.map((l, i) => ({ ...l, lineNumber: i + 1 }));
 }
@@ -99,5 +134,5 @@ function bankAdjustment(document) {
   }));
 }
 
-export const POSTING_RULES = { invoice, manual, receipt, creditNote, bankAdjustment };
+export const POSTING_RULES = { invoice, bill, manual, receipt, supplierPayment, creditNote, bankAdjustment };
 

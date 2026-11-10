@@ -7,6 +7,7 @@ export function createPartySchemas(z) {
     name: z.string().trim().min(1, 'Name is required'),
     email: z.string().trim().email('Enter a valid email').optional(),
     phone: z.string().trim().optional(),
+    panVatNo: z.string().trim().optional(),
     creditDays: z.number().int().min(0, 'Credit days must be 0 or more').optional(),
   };
 
@@ -17,6 +18,7 @@ export function createPartySchemas(z) {
     name: fields.name.optional(),
     email: fields.email.nullable(),
     phone: fields.phone.nullable(),
+    panVatNo: fields.panVatNo.nullable(),
     creditDays: fields.creditDays,
     isActive: z.boolean().optional(),
   }).strict().refine((value) => Object.keys(value).length > 0, {
