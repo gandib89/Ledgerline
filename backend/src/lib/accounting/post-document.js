@@ -3,16 +3,17 @@ import { POSTING_RULES } from './posting-rules.js';
 import { nextDocNumber, nextEntryNumber } from './document-numbering.js';
 import { assertPeriodOpen } from './period-lock.js';
 import { notFound, conflict, businessRule, forbidden, internal } from './errors.js';
-import { AR_ACCOUNT_CODE } from './chart-of-accounts.js';
-import { add, eq, dec } from '../money.js';
+import { AR_ACCOUNT_CODE, AP_ACCOUNT_CODE } from './chart-of-accounts.js';
+import { add, eq, dec, isZero } from '../money.js';
 
-// credit_note/receipt/bill/supplier_payment have their own posting rules and
+// credit_note/receipt/supplier_payment have their own posting rules and
 // permission codes on the days that build them (§6 posting rule table) and
 // don't route through here — BANK_ADJUSTMENT is the one other type wired
 // in, since §7's "create an entry from the line" explicitly posts through
 // this same engine.
 const DOC_TYPE_RULES = {
   INVOICE: { rulesKey: 'invoice', prefix: 'INV', permission: 'invoice.post', label: 'Sales Invoice' },
+  BILL: { rulesKey: 'bill', prefix: 'BILL', permission: 'bill.post', label: 'Bill' },
   BANK_ADJUSTMENT: { rulesKey: 'bankAdjustment', prefix: 'BADJ', permission: 'bank.reconcile', label: 'Bank Adjustment' },
 };
 
@@ -46,6 +47,11 @@ export async function postDocument(documentId, actor, tx = prisma) {
       // 2. Guards — each throws an error the route handler maps to HTTP.
       if (doc.status !== 'DRAFT') {
         throw conflict('already_posted', `Document ${doc.id} is already ${doc.status.toLowerCase()}`);
+      }
+
+      // Enforced when the draft is saved; re-checked here because nothing in the DB stops a bad row.
+      if (doc.docType === 'BILL' && doc.postingDate.getTime() < doc.docDate.getTime()) {
+        throw businessRule('posting_date_before_bill_date', 'Posting Date cannot be earlier than the Bill Date');
       }
 
       const org = await tx.organization.findUniqueOrThrow({ where: { id: actor.organizationId } });
@@ -100,6 +106,27 @@ export async function postDocument(documentId, actor, tx = prisma) {
             taxableAmount: l.taxableAmount,
             taxAmount: l.taxAmount,
             taxAccountId: l.taxCode?.outputAccountId ?? null,
+            description: l.description,
+          })),
+        });
+      } else if (doc.docType === 'BILL') {
+        if (docLines.some((l) => l.taxCodeId && !isZero(l.taxAmount) && !l.taxCode?.inputAccountId)) {
+          throw businessRule('tax_code_no_input_account', 'A tax code on this Bill has no input tax account');
+        }
+        const apAccount = await tx.account.findFirst({
+          where: { organizationId: actor.organizationId, code: AP_ACCOUNT_CODE },
+        });
+        if (!apAccount) throw internal(`Accounts Payable account (${AP_ACCOUNT_CODE}) not found for this organization`);
+
+        journalLines = POSTING_RULES.bill({
+          partyId: doc.partyId,
+          apAccountId: apAccount.id,
+          grandTotal: dec(doc.grandTotal),
+          lines: docLines.map((l) => ({
+            accountId: l.accountId,
+            taxableAmount: l.taxableAmount,
+            taxAmount: l.taxAmount,
+            taxAccountId: l.taxCode?.inputAccountId ?? null,
             description: l.description,
           })),
         });

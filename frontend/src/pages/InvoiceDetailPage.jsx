@@ -12,7 +12,7 @@ function cents(value) {
   return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0').slice(0, 2));
 }
 
-function JournalPanel({ journal, accountNames }) {
+export function JournalPanel({ journal, accountNames }) {
   if (!journal) {
     return (
       <aside className="journal-panel journal-empty">

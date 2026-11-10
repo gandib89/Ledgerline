@@ -39,6 +39,30 @@ function invoice(document) {
 }
 
 
+// Mirror of invoice: expense/asset debits per line, input VAT debited grouped
+// per account, Accounts Payable credited for the grand total against the Supplier.
+function bill(document) {
+  const lines = [];
+  for (const docLine of document.lines) {
+    if (isZero(docLine.taxableAmount)) continue; // a zero line would break jl_sign_check
+    lines.push(line({ accountId: docLine.accountId, debit: docLine.taxableAmount, description: docLine.description }));
+  }
+
+  const taxByAccount = new Map();
+  for (const docLine of document.lines) {
+    if (!docLine.taxAccountId || isZero(docLine.taxAmount)) continue;
+    taxByAccount.set(docLine.taxAccountId, add(taxByAccount.get(docLine.taxAccountId) ?? 0, docLine.taxAmount));
+  }
+  for (const [taxAccountId, taxAmount] of taxByAccount) {
+    lines.push(line({ accountId: taxAccountId, debit: taxAmount, description: 'VAT Receivable (Input)' }));
+  }
+
+  lines.push(
+    line({ accountId: document.apAccountId, credit: document.grandTotal, partyId: document.partyId, description: 'Accounts Payable' })
+  );
+  return lines.map((l, i) => ({ ...l, lineNumber: i + 1 }));
+}
+
 function manual(document) {
   return document.lines.map((docLine, i) => ({
     accountId: docLine.accountId,
@@ -99,5 +123,5 @@ function bankAdjustment(document) {
   }));
 }
 
-export const POSTING_RULES = { invoice, manual, receipt, creditNote, bankAdjustment };
+export const POSTING_RULES = { invoice, bill, manual, receipt, creditNote, bankAdjustment };
 
