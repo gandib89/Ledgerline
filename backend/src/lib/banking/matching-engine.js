@@ -58,9 +58,11 @@ function scoreCandidate(statementLine, candidate) {
 
   const docNoHit = candidate.doc_no && statementLine.description.toUpperCase().includes(String(candidate.doc_no).toUpperCase()) ? 1 : 0;
   const referenceHit = candidate.reference_no && statementLine.reference && candidate.reference_no === statementLine.reference ? 1 : 0;
+  // eslint-disable-next-line no-restricted-syntax -- similarity score (0..1), not money
   const nameSimilarity = Number(candidate.name_similarity ?? 0);
   const rScore = Math.max(docNoHit, referenceHit, nameSimilarity);
 
+  // eslint-disable-next-line no-restricted-syntax -- weighted confidence score, not money
   return AMOUNT_WEIGHT * 1 + DATE_WEIGHT * dScore + REFERENCE_WEIGHT * rScore;
 }
 
