@@ -1,4 +1,5 @@
 import { prisma } from '../../db/client.js';
+import { Prisma } from '../../generated/prisma/index.js';
 import { nextEntryNumber } from './document-numbering.js';
 import { assertPeriodOpen } from './period-lock.js';
 import { findFiscalYearForDate } from './fiscal-year.js';
@@ -48,6 +49,17 @@ export async function reverseEntry(entryId, { reason, reversalDate }, actor) {
       });
     }
 
+    // Take the source document's locks (and, for a receipt, every target
+    // invoice's) BEFORE the entry-number counter: postReceipt locks invoices
+    // first and the counter second, so locking in the other order deadlocks.
+    let sourceDocument = null;
+    if (original.sourceId) {
+      const [doc] = await tx.$queryRaw`
+        SELECT * FROM "Document" WHERE id = ${original.sourceId} AND "organizationId" = ${actor.organizationId} FOR UPDATE
+      `;
+      if (doc) sourceDocument = await cascadeReversal(tx, actor, original.documentType, doc);
+    }
+
     // Mechanical debit<->credit swap, not a POSTING_RULES entry — this isn't
     // a rule keyed by document type, it's the same transform for every entry.
     const swappedLines = originalLines.map((l) => ({
@@ -79,14 +91,6 @@ export async function reverseEntry(entryId, { reason, reversalDate }, actor) {
     // carve-out only allows this exact status transition, nothing else.
     await tx.$executeRaw`UPDATE "JournalEntry" SET status = 'REVERSED' WHERE id = ${original.id}`;
 
-    let sourceDocument = null;
-    if (original.sourceId) {
-      const [doc] = await tx.$queryRaw`
-        SELECT * FROM "Document" WHERE id = ${original.sourceId} AND "organizationId" = ${actor.organizationId} FOR UPDATE
-      `;
-      if (doc) sourceDocument = await cascadeReversal(tx, actor, original.documentType, doc);
-    }
-
     return { original: { ...original, status: 'REVERSED' }, reversal, sourceDocument };
   });
 }
@@ -110,10 +114,19 @@ async function cascadeReversal(tx, actor, documentType, doc) {
 
   if (documentType === 'receipt') {
     const allocations = await tx.paymentAllocation.findMany({ where: { paymentDocumentId: doc.id } });
+    // Lock every target invoice in one id-ordered query - the same order
+    // postReceipt locks in, so a reversal and a receipt touching the same
+    // invoices never deadlock. Per-allocation locks would follow insert order.
+    const invoiceIds = [...new Set(allocations.map((a) => a.targetDocumentId))];
+    const lockedInvoices = invoiceIds.length === 0 ? [] : await tx.$queryRaw`
+      SELECT * FROM "Document"
+      WHERE id IN (${Prisma.join(invoiceIds)}) AND "organizationId" = ${actor.organizationId}
+      ORDER BY id
+      FOR UPDATE
+    `;
+    const invoicesById = new Map(lockedInvoices.map((d) => [d.id, d]));
     for (const alloc of allocations) {
-      const [invoice] = await tx.$queryRaw`
-        SELECT * FROM "Document" WHERE id = ${alloc.targetDocumentId} AND "organizationId" = ${actor.organizationId} FOR UPDATE
-      `;
+      const invoice = invoicesById.get(alloc.targetDocumentId);
       if (!invoice) continue;
       const newOutstanding = add(invoice.outstandingAmount, alloc.amount);
       const newAllocated = sub(invoice.allocatedAmount, alloc.amount);
