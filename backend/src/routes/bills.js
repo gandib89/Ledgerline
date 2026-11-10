@@ -5,7 +5,9 @@ import { authenticate } from '../middleware/authenticate.js';
 import { resolveTenant } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
 import { createDraftBill, updateDraftBill, previewBill } from '../lib/invoices/bill-service.js';
+import { postDocument } from '../lib/accounting/post-document.js';
 import { notFound } from '../lib/accounting/errors.js';
+import { serializeJournalEntry } from './journal-entries.js';
 import { serializeInvoice } from './invoices.js';
 
 const router = Router();
@@ -141,6 +143,29 @@ router.patch('/bills/:id', authorize('bill.create'), async (req, res, next) => {
     const doc = await updateDraftBill(actorFrom(req), id, version, input);
     req.auditEntry = { action: 'bill.updated', entityType: 'Document', entityId: doc.id, before: null, after: serializeBill(doc) };
     res.json(serializeBill(doc));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/bills/:id/post', authorize('bill.post'), async (req, res, next) => {
+  try {
+    const id = z.string().uuid().parse(req.params.id);
+    const entry = await postDocument(id, actorFrom(req));
+    const [doc, fullEntry] = await Promise.all([
+      prisma.document.findFirstOrThrow({ where: { id, organizationId: req.organizationId }, include: { lines: true } }),
+      prisma.journalEntry.findFirstOrThrow({ where: { id: entry.id, organizationId: req.organizationId }, include: { lines: true } }),
+    ]);
+
+    req.auditEntry = {
+      action: 'bill.posted',
+      entityType: 'Document',
+      entityId: doc.id,
+      before: null,
+      after: { docNo: doc.docNo, journalEntryId: doc.journalEntryId },
+    };
+
+    res.json({ bill: serializeBill(doc), journalEntry: serializeJournalEntry(fullEntry) });
   } catch (err) {
     next(err);
   }

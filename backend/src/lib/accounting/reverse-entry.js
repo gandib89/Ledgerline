@@ -112,6 +112,19 @@ async function cascadeReversal(tx, actor, documentType, doc) {
     });
   }
 
+  if (documentType === 'bill') {
+    // The Bill row is already locked (reverseEntry took it before the entry
+    // counter). Any allocation row means a Supplier Payment still covers it.
+    const applied = await tx.paymentAllocation.count({ where: { organizationId: actor.organizationId, targetDocumentId: doc.id } });
+    if (applied > 0 || dec(doc.allocatedAmount).gt(0)) {
+      throw businessRule('cannot_reverse_bill_with_payments', `Bill ${doc.id} has payments applied — reverse the Supplier Payment first`);
+    }
+    return tx.document.update({
+      where: { id: doc.id },
+      data: { status: 'REVERSED', outstandingAmount: 0, version: { increment: 1 } },
+    });
+  }
+
   if (documentType === 'receipt') {
     const allocations = await tx.paymentAllocation.findMany({ where: { paymentDocumentId: doc.id } });
     // Lock every target invoice in one id-ordered query - the same order

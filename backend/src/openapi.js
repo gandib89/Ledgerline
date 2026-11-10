@@ -201,6 +201,11 @@ registry.registerPath({
   security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }), body: { content: { 'application/json': { schema: z.object({ ...billBodyFields, version: z.number() }).partial({ partyId: true, referenceNo: true, docDate: true }) } } } },
   responses: { 200: { description: 'OK', ...json(bill) }, 404: errorResponse, 409: errorResponse },
 });
+registry.registerPath({
+  method: 'post', path: '/api/v1/bills/{id}/post', tags: ['Bills'], summary: 'Post a draft Bill — creates its journal entry and BILL number (bill.post)',
+  security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }) },
+  responses: { 200: { description: 'OK', ...json(z.object({ bill, journalEntry })) }, 404: errorResponse, 409: errorResponse, 422: errorResponse },
+});
 
 // ---- journal entries ------------------------------------------------------------
 const manualLine = z.object({ accountId: uuid(), debit: z.number().min(0).default(0), credit: z.number().min(0).default(0), partyId: uuid().optional(), description: z.string().optional() });
