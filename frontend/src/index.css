@@ -529,6 +529,15 @@ p {
 .danger-button:disabled { cursor: wait; opacity: .6; }
 .table-link { color: var(--emerald-dark); font-weight: 750; text-decoration: underline; text-underline-offset: 3px; }
 
+.nav-group-label {
+  margin: 18px 12px 6px;
+  color: #738e84;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
 .nav-link {
   display: grid;
   min-height: 45px;
