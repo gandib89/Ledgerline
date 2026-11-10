@@ -329,8 +329,8 @@ registry.registerPath({
   responses: { 200: { description: 'OK', ...json(z.object({ rows: z.array(z.object({ code: z.string(), debitBalance: money(), creditBalance: money() })), totals: z.object({ debit: money(), credit: money() }), integrity })) } },
 });
 registry.registerPath({
-  method: 'get', path: '/api/v1/reports/ar-aging', tags: ['Reports'], summary: 'AR aging buckets, self-checked against the control account',
-  security: AUTH, request: { headers: tenantParams, query: z.object({ asOf: dateStr().optional() }) },
+  method: 'get', path: '/api/v1/reports/ar-aging', tags: ['Reports'], summary: "AR aging as of today (Nepal), net of unapplied receipts, self-checked against the control account",
+  security: AUTH, request: { headers: tenantParams },
   responses: { 200: { description: 'OK', ...json(z.object({ rows: z.array(z.object({ partyId: uuid(), total: money() })), totals: z.object({ grandTotal: money() }), integrity: z.object({ balanced: z.boolean(), arControlBalance: money() }) })) } },
 });
 registry.registerPath({

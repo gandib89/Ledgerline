@@ -18,8 +18,8 @@ export function DashboardPage() {
   const asOf = todayInNepal();
   const fiscalYearStart = currentFiscalYear?.startDate ?? asOf;
   const aging = useQuery({
-    queryKey: ['ar-aging', activeOrganizationId, asOf],
-    queryFn: () => apiRequest(`/reports/ar-aging?asOf=${asOf}`),
+    queryKey: ['ar-aging', activeOrganizationId],
+    queryFn: () => apiRequest('/reports/ar-aging'),
     enabled: Boolean(activeOrganizationId),
   });
   const profitLoss = useQuery({

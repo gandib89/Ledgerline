@@ -15,14 +15,17 @@ beforeEach(() => {
 
 describe('Day 4 dashboard', () => {
   it('builds its metrics from live reports instead of a mock-only summary route', async () => {
+    let agingSearch;
     server.use(
       http.get('/api/v1/dashboard/summary', () => HttpResponse.json({ error: { code: 'removed', message: 'Do not use this route' } }, { status: 500 })),
-      http.get('/api/v1/reports/ar-aging', () => HttpResponse.json({
+      http.get('/api/v1/reports/ar-aging', ({ request }) => {
+        agingSearch = new URL(request.url).search;
+        return HttpResponse.json({
         buckets: [{ key: 'current', label: 'Current' }, { key: 'd1_30', label: '1-30 days' }],
         rows: [{ partyId: 'p-1', partyName: 'Customer', buckets: { current: '33900.00', d1_30: '35600.00' }, total: '69500.00', invoices: [] }],
         totals: { grandTotal: '69500.00' },
         integrity: { arControlBalance: '69500.00', balanced: true },
-      })),
+      }); }),
       http.get('/api/v1/reports/profit-loss', () => HttpResponse.json({ revenue: [], expense: [], revenueTotal: '195000.00', expenseTotal: '0.00', netProfit: '195000.00' })),
       http.get('/api/v1/bank-accounts', () => HttpResponse.json([{ id: 'bank-1', accountId: 'cash-1', bankName: 'Nabil Bank', isActive: true }])),
       http.get('/api/v1/reports/general-ledger', () => HttpResponse.json({ account: { id: 'cash-1' }, openingBalance: '0.00', lines: [], closingBalance: '624720.00' })),
@@ -35,5 +38,6 @@ describe('Day 4 dashboard', () => {
     expect(screen.getByText('NPR 195,000.00')).toBeInTheDocument();
     expect(screen.getByText('NPR 624,720.00')).toBeInTheDocument();
     expect(screen.queryByText('Dashboard unavailable')).not.toBeInTheDocument();
+    expect(agingSearch).toBe('');
   });
 });

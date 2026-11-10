@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import { prisma } from '../db/client.js';
@@ -184,7 +184,11 @@ describe('golden path: invoice -> payment -> reconciliation -> reports stay cons
     const earningsLine = bs.body.equity.find((e) => e.name === 'Current Year Earnings');
     expect(earningsLine.amount).toBe('163870.00');
 
-    const aging = await request(app).get('/api/v1/reports/ar-aging').query({ asOf: '2026-07-15' }).set(owner.headers);
+    // AR aging is always "as of today" (Nepal): pin the clock to the fiscal year end.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-15T06:00:00Z'));
+    const aging = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
+    vi.useRealTimers();
     expect(aging.status).toBe(200);
     expect(aging.body.totals.grandTotal).toBe('35600.00');
     expect(aging.body.integrity.arControlBalance).toBe(aging.body.totals.grandTotal); // the auditor's test
