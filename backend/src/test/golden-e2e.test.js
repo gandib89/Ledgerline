@@ -195,3 +195,174 @@ describe('golden path: invoice -> payment -> reconciliation -> reports stay cons
     expect(aging.body.integrity.arControlBalance).toBe(await arGlBalance());
   });
 });
+
+// AP leg: the same posting engine, Allocation model and aging machinery, driven
+// by Bills and Supplier Payments instead of Invoices and Receipts. Runs on the
+// AR leg's organization, so the trial balance below also proves the two legs
+// coexist. Every figure is worked out by hand in the comments, never computed.
+describe('golden path, AP leg: bills -> split supplier payment -> reversals', () => {
+  let apAccount, vatInputAccount, costOfSales, utilities;
+  let pokhara, lumbini;
+  let billA, billB, payment;
+  let billAEntryId;
+
+  const getJson = async (path) => {
+    const res = await request(app).get(path).set(owner.headers);
+    expect(res.status).toBe(200);
+    return res.body;
+  };
+  const row = (tb, code) => tb.rows.find((r) => r.code === code);
+  // AP aging is always "as of today" (Nepal): pin the clock to 2025-09-30.
+  const apAging = async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2025-09-30T06:00:00Z'));
+    try {
+      return await getJson('/api/v1/reports/ap-aging');
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+  const reverse = (journalEntryId, reversalDate, reason) =>
+    request(app).post(`/api/v1/journal-entries/${journalEntryId}/reverse`).set(owner.headers).send({ reason, reversalDate });
+
+  async function createAndPostBill({ partyId, referenceNo, docDate, lines }) {
+    const created = await request(app).post('/api/v1/bills').set(owner.headers).send({ partyId, referenceNo, docDate, lines });
+    expect(created.status).toBe(201);
+    const posted = await request(app).post(`/api/v1/bills/${created.body.id}/post`).set(owner.headers).send();
+    expect(posted.status).toBe(200);
+    return posted.body;
+  }
+
+  beforeAll(async () => {
+    apAccount = await prisma.account.create({ data: { organizationId: owner.orgId, code: '2100', name: 'Accounts Payable', type: 'LIABILITY', isControlAccount: true } });
+    vatInputAccount = await prisma.account.create({ data: { organizationId: owner.orgId, code: '2210', name: 'VAT Receivable (Input)', type: 'ASSET', isControlAccount: true } });
+    costOfSales = await prisma.account.create({ data: { organizationId: owner.orgId, code: '5100', name: 'Cost of Sales', type: 'EXPENSE' } });
+    utilities = await prisma.account.create({ data: { organizationId: owner.orgId, code: '5400', name: 'Utilities', type: 'EXPENSE' } });
+    await prisma.taxCode.update({ where: { id: owner.taxCodeId }, data: { inputAccountId: vatInputAccount.id } });
+
+    // creditDays decides each Bill's Due Date, and so its aging bucket.
+    pokhara = await prisma.party.create({ data: { organizationId: owner.orgId, type: 'SUPPLIER', code: 'SUP-001', name: 'Pokhara Packaging', creditDays: 30 } });
+    lumbini = await prisma.party.create({ data: { organizationId: owner.orgId, type: 'SUPPLIER', code: 'SUP-002', name: 'Lumbini Logistics', creditDays: 15 } });
+  });
+
+  it('posts three Bills; VAT lands in 2210 and every Bill credits 2100', async () => {
+    // Bill A (Pokhara): 20 x 5,000 = 100,000 + VAT 13% 13,000 = 113,000
+    const a = await createAndPostBill({
+      partyId: pokhara.id, referenceNo: 'PP-0001', docDate: '2025-09-01',
+      lines: [{ accountId: costOfSales.id, description: 'Packaging cartons', quantity: 20, unitPrice: 5000, taxCodeId: owner.taxCodeId }],
+    });
+    billA = a.bill;
+    billAEntryId = a.journalEntry.id;
+    expect(billA.grandTotal).toBe('113000.00');
+    const lineOf = (entry, accountId) => entry.lines.find((l) => l.accountId === accountId);
+    expect(lineOf(a.journalEntry, costOfSales.id).debit).toBe('100000.00');
+    expect(lineOf(a.journalEntry, vatInputAccount.id).debit).toBe('13000.00');
+    expect(lineOf(a.journalEntry, apAccount.id).credit).toBe('113000.00');
+
+    // Bill B (Pokhara): 1 x 40,000 utilities, no VAT = 40,000, dated early so it is overdue by 30 Sep
+    billB = (await createAndPostBill({
+      partyId: pokhara.id, referenceNo: 'PP-0002', docDate: '2025-07-20',
+      lines: [{ accountId: utilities.id, description: 'Warehouse electricity', quantity: 1, unitPrice: 40000 }],
+    })).bill;
+    expect(billB.grandTotal).toBe('40000.00');
+
+    // Bill C (Lumbini): 1 x 7,000 = 7,000, no VAT
+    const billC = (await createAndPostBill({
+      partyId: lumbini.id, referenceNo: 'LL-0001', docDate: '2025-09-20',
+      lines: [{ accountId: costOfSales.id, description: 'Freight', quantity: 1, unitPrice: 7000 }],
+    })).bill;
+    expect(billC.grandTotal).toBe('7000.00');
+
+    // 2100: 113,000 + 40,000 + 7,000 = 160,000 credit
+    const aging = await apAging();
+    expect(aging.totals.grandTotal).toBe('160000.00');
+    expect(aging.integrity.apControlBalance).toBe('160000.00');
+  });
+
+  it('a split Supplier Payment settles part of both Pokhara Bills and leaves 10,000 unapplied', async () => {
+    // Pays 120,000 from the bank: 80,000 to Bill A + 30,000 to Bill B = 110,000 applied, 10,000 unapplied.
+    const res = await request(app).post('/api/v1/supplier-payments').set(owner.headers)
+      .set('Idempotency-Key', 'golden-ap-payment-1').send({
+        partyId: pokhara.id, docDate: '2025-09-10', paidFromAccountId: bankAccount.id, amount: '120000.00',
+        allocations: [{ billId: billA.id, amount: '80000.00' }, { billId: billB.id, amount: '30000.00' }],
+      });
+    expect(res.status).toBe(201);
+    payment = res.body;
+    expect(payment.supplierPayment).toMatchObject({ grandTotal: '120000.00', allocatedAmount: '110000.00', outstandingAmount: '10000.00' });
+    // Bill A: 113,000 - 80,000 = 33,000 left. Bill B: 40,000 - 30,000 = 10,000 left.
+    expect(payment.allocations).toEqual([
+      { billId: billA.id, amount: '80000.00', billOutstandingAfter: '33000.00' },
+      { billId: billB.id, amount: '30000.00', billOutstandingAfter: '10000.00' },
+    ]);
+    expect(await getJson(`/api/v1/bills/${billA.id}`)).toMatchObject({ status: 'partially_paid', outstandingAmount: '33000.00' });
+    expect(await getJson(`/api/v1/bills/${billB.id}`)).toMatchObject({ status: 'partially_paid', outstandingAmount: '10000.00' });
+
+    const tb = await getJson('/api/v1/reports/trial-balance');
+    // 2100: credits 160,000 - debit 120,000 = 40,000 credit
+    expect(row(tb, '2100')).toMatchObject({ totalDebit: '120000.00', totalCredit: '160000.00', creditBalance: '40000.00', debitBalance: '0.00' });
+    expect(row(tb, '2210')).toMatchObject({ totalDebit: '13000.00', debitBalance: '13000.00' });
+    // Bank: 100,000 + 50,850 in, 1,130 charge, 120,000 out = 29,720
+    expect(row(tb, '1020')).toMatchObject({ totalDebit: '150850.00', totalCredit: '121130.00', debitBalance: '29720.00' });
+    // AR leg's 338,430 + 113,000 + 40,000 + 7,000 + 120,000 = 618,430 on each side
+    expect(tb.integrity.balanced).toBe(true);
+    expect(tb.totals.debit).toBe('618430.00');
+    expect(tb.totals.credit).toBe('618430.00');
+
+    const aging = await apAging();
+    expect(aging.asOf).toBe('2025-09-30');
+    // Pokhara: Bill A 33,000 (due 1 Oct, current) + Bill B 10,000 (due 19 Aug, 42 days late: 31-60)
+    // = 43,000 open, less 10,000 unapplied = 33,000
+    const p = aging.rows.find((r) => r.partyId === pokhara.id);
+    expect(p.buckets).toEqual({ current: '33000.00', d1_30: '0.00', d31_60: '10000.00', d61_90: '0.00', d90_plus: '0.00' });
+    expect(p.unapplied).toBe('-10000.00');
+    expect(p.total).toBe('33000.00');
+    // Lumbini: Bill C 7,000, due 5 Oct, current
+    const l = aging.rows.find((r) => r.partyId === lumbini.id);
+    expect(l.buckets).toEqual({ current: '7000.00', d1_30: '0.00', d31_60: '0.00', d61_90: '0.00', d90_plus: '0.00' });
+    expect(l.unapplied).toBe('0.00');
+    expect(l.total).toBe('7000.00');
+    // 33,000 + 7,000 = 40,000 = the 2100 balance above
+    expect(aging.totals.grandTotal).toBe('40000.00');
+    expect(aging.integrity.apControlBalance).toBe('40000.00');
+    expect(aging.integrity.balanced).toBe(true);
+  });
+
+  it('reversing the payment restores both Bills; reversing Bill A then removes its VAT', async () => {
+    const paymentReversal = await reverse(payment.journalEntry.id, '2025-09-25', 'wrong bank account');
+    expect(paymentReversal.status).toBe(200);
+    expect(paymentReversal.body.original.status).toBe('reversed');
+    expect(await getJson(`/api/v1/bills/${billA.id}`)).toMatchObject({ status: 'posted', outstandingAmount: '113000.00' });
+    expect(await getJson(`/api/v1/bills/${billB.id}`)).toMatchObject({ status: 'posted', outstandingAmount: '40000.00' });
+
+    // Back to 160,000 payable: Pokhara 113,000 + 40,000 = 153,000, Lumbini 7,000.
+    let aging = await apAging();
+    expect(aging.rows.find((r) => r.partyId === pokhara.id)).toMatchObject({ unapplied: '0.00', total: '153000.00' });
+    expect(aging.totals.grandTotal).toBe('160000.00');
+
+    const billAReversal = await reverse(billAEntryId, '2025-09-26', 'duplicate supplier invoice');
+    expect(billAReversal.status).toBe(200);
+    expect((await getJson(`/api/v1/bills/${billA.id}`)).status).toBe('reversed');
+
+    const tb = await getJson('/api/v1/reports/trial-balance');
+    // 2100: debits 120,000 + 113,000 = 233,000; credits 160,000 + 120,000 = 280,000; net 47,000 credit (Bill B 40,000 + Bill C 7,000)
+    expect(row(tb, '2100')).toMatchObject({ totalDebit: '233000.00', totalCredit: '280000.00', creditBalance: '47000.00', debitBalance: '0.00' });
+    // 2210: 13,000 in, 13,000 out
+    expect(row(tb, '2210')).toMatchObject({ totalDebit: '13000.00', totalCredit: '13000.00', debitBalance: '0.00', creditBalance: '0.00' });
+    // Bank: 150,850 + 120,000 back in; 1,130 + 120,000 out = 149,720
+    expect(row(tb, '1020')).toMatchObject({ totalDebit: '270850.00', totalCredit: '121130.00', debitBalance: '149720.00' });
+    // 618,430 + payment reversal 120,000 + Bill A reversal 113,000 = 851,430 on each side
+    expect(tb.integrity.balanced).toBe(true);
+    expect(tb.totals.debit).toBe('851430.00');
+    expect(tb.totals.credit).toBe('851430.00');
+
+    aging = await apAging();
+    // Pokhara: only Bill B, 40,000 (42 days late: 31-60). Lumbini: Bill C, 7,000 current.
+    const p = aging.rows.find((r) => r.partyId === pokhara.id);
+    expect(p.buckets).toEqual({ current: '0.00', d1_30: '0.00', d31_60: '40000.00', d61_90: '0.00', d90_plus: '0.00' });
+    expect(p.total).toBe('40000.00');
+    expect(aging.rows.find((r) => r.partyId === lumbini.id).total).toBe('7000.00');
+    expect(aging.totals.grandTotal).toBe('47000.00');
+    expect(aging.integrity.apControlBalance).toBe('47000.00');
+    expect(aging.integrity.balanced).toBe(true);
+  });
+});
