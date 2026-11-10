@@ -67,7 +67,7 @@ async function postInvoice({ docDate, quantity, unitPrice }) {
   const totals = sumLines([computed]);
   const doc = await prisma.document.create({
     data: {
-      organizationId: org.id, fiscalYearId: fiscalYear.id, docType: 'INVOICE', docDate, partyId: party.id, status: 'DRAFT',
+      organizationId: org.id, fiscalYearId: fiscalYear.id, docType: 'INVOICE', docDate, postingDate: docDate, partyId: party.id, status: 'DRAFT',
       subtotal: totals.subtotal, discountAmount: totals.discountAmount, taxableAmount: totals.taxableAmount,
       taxAmount: totals.taxAmount, grandTotal: totals.grandTotal,
       lines: { create: [{ lineNo: 1, description: 'Line 1', accountId: salesAccount.id, quantity, unitPrice, discountPct: 0, taxableAmount: computed.taxableAmount, taxAmount: computed.taxAmount, lineTotal: computed.lineTotal }] },

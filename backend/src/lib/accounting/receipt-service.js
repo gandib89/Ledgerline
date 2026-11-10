@@ -94,7 +94,7 @@ export async function postReceipt(actor, input, tx = prisma) {
     const documentDraft = await tx.document.create({
       data: {
         organizationId: actor.organizationId, fiscalYearId: fiscalYear.id,
-        docType: 'RECEIPT', docNo, docDate, partyId: party.id,
+        docType: 'RECEIPT', docNo, docDate, postingDate: docDate, partyId: party.id,
         referenceNo: referenceNo ?? null, notes: notes ?? null,
         grandTotal: amount, allocatedAmount: allocatedTotal, outstandingAmount: outstandingOnReceipt,
         status: 'POSTED', createdById: actor.userId, postedAt: new Date(), postedById: actor.userId,

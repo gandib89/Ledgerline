@@ -51,7 +51,7 @@ export async function postDocument(documentId, actor, tx = prisma) {
       const org = await tx.organization.findUniqueOrThrow({ where: { id: actor.organizationId } });
       if (!org.isActive) throw businessRule('organization_read_only', 'Organization is read-only');
 
-      const period = await assertPeriodOpen(tx, { organizationId: actor.organizationId, docDate: doc.docDate });
+      const period = await assertPeriodOpen(tx, { organizationId: actor.organizationId, docDate: doc.postingDate });
 
       const config = DOC_TYPE_RULES[doc.docType];
       if (!config) throw internal(`No posting rule wired for document type ${doc.docType}`);
@@ -128,7 +128,7 @@ export async function postDocument(documentId, actor, tx = prisma) {
           periodId: period.id,
           entryNumber,
           documentType: config.rulesKey,
-          entryDate: doc.docDate,
+          entryDate: doc.postingDate,
           description: `${config.label} ${docNo}`,
           status: 'POSTED',
           sourceId: doc.id,

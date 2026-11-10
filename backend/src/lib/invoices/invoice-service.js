@@ -35,6 +35,7 @@ export async function createDraftInvoice(actor, input) {
         fiscalYearId: fiscalYear.id,
         docType: 'INVOICE',
         docDate,
+        postingDate: docDate,
         dueDate,
         partyId: party.id,
         referenceNo: input.referenceNo ?? null,
@@ -91,6 +92,7 @@ export async function updateDraftInvoice(actor, documentId, expectedVersion, inp
       data: {
         fiscalYearId: fiscalYear.id,
         docDate,
+        postingDate: docDate,
         dueDate,
         partyId: party.id,
         referenceNo: input.referenceNo ?? existing.referenceNo,

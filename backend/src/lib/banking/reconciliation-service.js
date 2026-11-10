@@ -72,6 +72,7 @@ export async function createEntryFromLine(actor, statementLineId, { accountId, n
         fiscalYearId: fiscalYear.id,
         docType: 'BANK_ADJUSTMENT',
         docDate: line.txnDate,
+        postingDate: line.txnDate,
         grandTotal: amount,
         status: 'DRAFT',
         createdById: actor.userId,

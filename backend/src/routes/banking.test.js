@@ -191,10 +191,10 @@ describe('POST /lines/:id/reject', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ status: 'unmatched', matchedJournalLineId: null, matchConfidence: null });
-    const audit = await prisma.auditLog.findFirst({
+    // The audit row is written after the response finishes, so poll for it.
+    await expect.poll(() => prisma.auditLog.findFirst({
       where: { organizationId: owner.orgId, action: 'statementLine.suggestionRejected', entityId: suggested.id },
-    });
-    expect(audit).not.toBeNull();
+    })).not.toBeNull();
   });
 });
 
@@ -222,8 +222,9 @@ describe('RECON-4: manual match', () => {
     expect(matchRes.body.matchedBy).toBe('manual');
     expect(matchRes.body.matchConfidence).toBe('1.000');
 
-    const audit = await prisma.auditLog.findFirst({ where: { organizationId: owner.orgId, action: 'statementLine.matched', entityId: lineId } });
-    expect(audit).not.toBeNull();
+    await expect.poll(() => prisma.auditLog.findFirst({
+      where: { organizationId: owner.orgId, action: 'statementLine.matched', entityId: lineId },
+    })).not.toBeNull();
   });
 });
 

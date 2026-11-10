@@ -14,14 +14,14 @@ async function resetDb() {
   `);
 }
 
-let org, periodOpen, periodClosed, cash, revenue;
+let org, fiscalYear, periodOpen, periodClosed, cash, revenue;
 
 beforeAll(async () => {
   await resetDb();
 
   org = await prisma.organization.create({ data: { name: 'Trigger Test Co' } });
 
-  const fiscalYear = await prisma.fiscalYear.create({
+  fiscalYear = await prisma.fiscalYear.create({
     data: {
       organizationId: org.id,
       label: '2082/83',
@@ -169,6 +169,44 @@ describe('Trigger 3: period lock', () => {
       },
     });
     expect(entry.entryNumber).toBe('JE-OPEN-PERIOD-1');
+  });
+});
+
+// A document's Posting Date, not its own date, picks the period its entry goes
+// into. The trigger is the last line of defence, so the rejection here is the
+// database's own — the entry is written directly, bypassing the service check.
+describe('Trigger 3: period lock follows the document Posting Date', () => {
+  async function draftDoc(docDate, postingDate) {
+    return prisma.document.create({
+      data: { organizationId: org.id, fiscalYearId: fiscalYear.id, docType: 'INVOICE', docDate: new Date(docDate), postingDate: new Date(postingDate) },
+    });
+  }
+  async function entryFor(doc, entryNumber) {
+    const period = await prisma.accountingPeriod.findFirstOrThrow({
+      where: { fiscalYearId: fiscalYear.id, startDate: { lte: doc.postingDate }, endDate: { gte: doc.postingDate } },
+    });
+    return prisma.journalEntry.create({
+      data: {
+        organizationId: org.id, periodId: period.id, entryNumber, documentType: 'invoice', entryDate: doc.postingDate, sourceId: doc.id,
+        lines: {
+          create: [
+            { organizationId: org.id, accountId: cash.id, debit: '10.00', credit: '0', lineNumber: 1 },
+            { organizationId: org.id, accountId: revenue.id, debit: '0', credit: '10.00', lineNumber: 2 },
+          ],
+        },
+      },
+    });
+  }
+
+  it('posts an entry for a document whose Posting Date is in an open period, even if its docDate is in a locked one', async () => {
+    const doc = await draftDoc('2025-08-20', '2025-07-25');
+    const entry = await entryFor(doc, 'JE-POSTING-DATE-OPEN');
+    expect(entry.periodId).toBe(periodOpen.id);
+  });
+
+  it('rejects an entry for a document whose Posting Date is in a locked period, even if its docDate is in an open one', async () => {
+    const doc = await draftDoc('2025-07-25', '2025-08-20');
+    await expect(entryFor(doc, 'JE-POSTING-DATE-LOCKED')).rejects.toThrow(/closed/i);
   });
 });
 

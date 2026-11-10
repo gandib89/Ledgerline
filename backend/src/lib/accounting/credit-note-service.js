@@ -51,7 +51,7 @@ export async function postCreditNote(actor, { invoiceId, docDate: docDateStr, re
     const creditNote = await tx.document.create({
       data: {
         organizationId: actor.organizationId, fiscalYearId: fiscalYear.id,
-        docType: 'CREDIT_NOTE', docNo, docDate, partyId: invoice.partyId, parentDocumentId: invoice.id,
+        docType: 'CREDIT_NOTE', docNo, docDate, postingDate: docDate, partyId: invoice.partyId, parentDocumentId: invoice.id,
         referenceNo: referenceNo ?? null, notes: notes ?? null,
         subtotal: totals.subtotal, discountAmount: totals.discountAmount, taxableAmount: totals.taxableAmount,
         taxAmount: totals.taxAmount, grandTotal: totals.grandTotal, outstandingAmount: 0,
