@@ -14,6 +14,9 @@ const PERMISSIONS = [
   'report.view',
   'audit.view',
   'org.manage',
+  'bill.create',
+  'bill.post',
+  'supplier_payment.create',
 ];
 
 // plan §5's default matrix — who gets which permission
@@ -27,8 +30,11 @@ const ROLE_PERMISSIONS = {
     'bank.reconcile',
     'report.view',
     'audit.view',
+    'bill.create',
+    'bill.post',
+    'supplier_payment.create',
   ],
-  Clerk: ['invoice.create', 'payment.create', 'report.view'],
+  Clerk: ['invoice.create', 'payment.create', 'report.view', 'bill.create'],
   Viewer: ['report.view'],
 };
 

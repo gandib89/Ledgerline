@@ -69,6 +69,24 @@ describe('permissions', () => {
     ]);
   });
 
+  // AP permissions (spec #2): Supplier Payments deliberately do not reuse payment.create.
+  it('grants the AP permissions per role: Owner/Accountant all, Clerk bill.create only, Viewer none', async () => {
+    const ap = ['bill.create', 'bill.post', 'supplier_payment.create'];
+    const expected = {
+      Owner: ap,
+      Accountant: ap,
+      Clerk: ['bill.create'],
+      Viewer: [],
+    };
+    const headers = { Owner: owner.headers, ...members };
+
+    for (const [roleName, codes] of Object.entries(expected)) {
+      const res = await request(app).get('/api/v1/orgs').set(headers[roleName]);
+      const granted = res.body[0].permissions.filter((c) => ap.includes(c));
+      expect(granted, roleName).toEqual([...codes].sort());
+    }
+  });
+
   // PERM-1 — the org creator must be able to administer it, or the org is
   // orphaned the moment it is created.
   it('PERM-1: the org creator is an Owner with org.manage', async () => {
