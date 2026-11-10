@@ -5,6 +5,7 @@ import { AsyncState } from '../components/AsyncState.jsx';
 import { Money } from '../components/Money.jsx';
 import { useToast } from '../components/toast-context.js';
 import { apiRequest } from '../lib/api-client.js';
+import { BillPayments } from '../components/BillPayments.jsx';
 import { JournalPanel } from './InvoiceDetailPage.jsx';
 
 export function BillDetailPage() {
@@ -136,6 +137,8 @@ export function BillDetailPage() {
           <AsyncState tone="error" title="Journal unavailable" message={journal.error.message} />
         ) : <JournalPanel journal={journal.data} accountNames={accountNames} />}
       </div>
+
+      {document.status !== 'draft' && <BillPayments organizationId={activeOrganizationId} billId={document.id} />}
 
       {confirming && (
         <div className="dialog-backdrop">

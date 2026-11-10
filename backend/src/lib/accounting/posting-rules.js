@@ -83,6 +83,17 @@ function receipt(document) {
 }
 
 
+// Mirror of receipt: Accounts Payable debited against the Supplier, the
+// paid-from account credited.
+function supplierPayment(document) {
+  const lines = [
+    line({ accountId: document.apAccountId, debit: document.amount, partyId: document.partyId, description: 'Accounts Payable' }),
+    line({ accountId: document.paidFromAccountId, credit: document.amount, description: 'Supplier payment' }),
+  ];
+  return lines.map((l, i) => ({ ...l, lineNumber: i + 1 }));
+}
+
+
 function creditNote(document) {
   const lines = [];
 
@@ -123,5 +134,5 @@ function bankAdjustment(document) {
   }));
 }
 
-export const POSTING_RULES = { invoice, bill, manual, receipt, creditNote, bankAdjustment };
+export const POSTING_RULES = { invoice, bill, manual, receipt, supplierPayment, creditNote, bankAdjustment };
 

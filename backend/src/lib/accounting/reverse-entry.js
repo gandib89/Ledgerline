@@ -125,8 +125,10 @@ async function cascadeReversal(tx, actor, documentType, doc) {
     });
   }
 
-  if (documentType === 'receipt') {
-    const allocations = await tx.paymentAllocation.findMany({ where: { paymentDocumentId: doc.id } });
+  // A Supplier Payment un-applies exactly like a Receipt: its targets are Bills
+  // rather than Invoices, and the same id-ordered locking applies.
+  if (documentType === 'receipt' || documentType === 'supplierPayment') {
+    const allocations = await tx.paymentAllocation.findMany({ where: { organizationId: actor.organizationId, paymentDocumentId: doc.id } });
     // Lock every target invoice in one id-ordered query - the same order
     // postReceipt locks in, so a reversal and a receipt touching the same
     // invoices never deadlock. Per-allocation locks would follow insert order.
@@ -153,7 +155,7 @@ async function cascadeReversal(tx, actor, documentType, doc) {
         },
       });
     }
-    await tx.paymentAllocation.deleteMany({ where: { paymentDocumentId: doc.id } });
+    await tx.paymentAllocation.deleteMany({ where: { organizationId: actor.organizationId, paymentDocumentId: doc.id } });
     return tx.document.update({
       where: { id: doc.id },
       data: { status: 'REVERSED', outstandingAmount: 0, version: { increment: 1 } },

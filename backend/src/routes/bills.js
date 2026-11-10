@@ -6,6 +6,7 @@ import { resolveTenant } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
 import { createDraftBill, updateDraftBill, previewBill } from '../lib/invoices/bill-service.js';
 import { postDocument } from '../lib/accounting/post-document.js';
+import { getBillPaymentHistory } from '../lib/accounting/payment-history.js';
 import { notFound } from '../lib/accounting/errors.js';
 import { serializeJournalEntry } from './journal-entries.js';
 import { serializeInvoice } from './invoices.js';
@@ -131,6 +132,15 @@ router.get('/bills/:id', authorize('report.view'), async (req, res, next) => {
     });
     if (!doc) throw notFound('Bill not found');
     res.json(serializeBill(doc));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/bills/:id/payments', authorize('report.view'), async (req, res, next) => {
+  try {
+    const id = z.string().uuid().parse(req.params.id);
+    res.json(await getBillPaymentHistory(prisma, req.organizationId, id));
   } catch (err) {
     next(err);
   }

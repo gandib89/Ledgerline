@@ -27,6 +27,8 @@ import { JournalEntriesPage } from './pages/JournalEntriesPage.jsx';
 import { CreditNotePage } from './pages/CreditNotePage.jsx';
 import { CreditNoteDetailPage } from './pages/CreditNoteDetailPage.jsx';
 import { ReceiptDetailPage } from './pages/ReceiptDetailPage.jsx';
+import { SupplierPaymentPage } from './pages/SupplierPaymentPage.jsx';
+import { SupplierPaymentDetailPage } from './pages/SupplierPaymentDetailPage.jsx';
 import { TeamPage } from './pages/TeamPage.jsx';
 
 function App() {
@@ -44,6 +46,8 @@ function App() {
           <Route path="/bills/new" element={<BillEditorPage />} />
           <Route path="/bills/:id/edit" element={<BillEditorPage />} />
           <Route path="/bills/:id" element={<BillDetailPage />} />
+          <Route path="/supplier-payments/new" element={<SupplierPaymentPage />} />
+          <Route path="/supplier-payments/:id" element={<SupplierPaymentDetailPage />} />
           <Route path="/invoices" element={<InvoicesPage />} />
           <Route path="/invoices/new" element={<InvoiceEditorPage />} />
           <Route path="/invoices/:id/edit" element={<InvoiceEditorPage />} />

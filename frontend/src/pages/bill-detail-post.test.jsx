@@ -68,6 +68,7 @@ function serve(bill) {
     http.get('/api/v1/parties', () => HttpResponse.json([supplier])),
     http.get('/api/v1/accounts', () => HttpResponse.json(accounts)),
     http.get('/api/v1/journal-entries/:id', () => HttpResponse.json(journalEntry)),
+    http.get('/api/v1/bills/:id/payments', () => HttpResponse.json({ billId: BILL_ID, outstandingAmount: '2825.00', payments: [] })),
   );
 }
 
@@ -194,5 +195,39 @@ describe('Bill detail: reversing', () => {
     renderDetail(reverserPermissions);
     expect(await screen.findByRole('heading', { name: 'BILL-2082-0001' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reverse bill' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Bill detail: payments applied', () => {
+  it('lists the Supplier Payments applied to a Bill with the current outstanding amount, linking to each payment', async () => {
+    serve({ ...postedBill, status: 'partially_paid', outstandingAmount: '1825.00' });
+    server.use(http.get('/api/v1/bills/:id/payments', () => HttpResponse.json({
+      billId: BILL_ID,
+      outstandingAmount: '1825.00',
+      payments: [{ supplierPaymentId: 'sp-1', supplierPaymentNo: 'SPAY-2082-0001', docDate: '2025-07-28', referenceNo: 'CHQ-77', amount: '1000.00', allocatedAt: '2025-07-28T08:00:00.000Z' }],
+    })));
+    renderDetail();
+
+    const link = await screen.findByRole('link', { name: 'SPAY-2082-0001' });
+    expect(link).toHaveAttribute('href', '/supplier-payments/sp-1');
+    expect(screen.getByText('CHQ-77')).toBeInTheDocument();
+    const section = screen.getByRole('region', { name: 'Payments applied' });
+    expect(within(section).getByText(/1,000\.00/)).toBeInTheDocument();
+    expect(within(section).getByText(/1,825\.00/)).toBeInTheDocument();
+  });
+
+  it('says nothing has been paid when no payments are allocated, and does not ask for payments on a draft', async () => {
+    serve(postedBill);
+    const { unmount } = renderDetail();
+    expect(await screen.findByText('No payments applied')).toBeInTheDocument();
+    unmount();
+
+    let asked = false;
+    serve(draftBill);
+    server.use(http.get('/api/v1/bills/:id/payments', () => { asked = true; return HttpResponse.json({ billId: BILL_ID, outstandingAmount: '0.00', payments: [] }); }));
+    renderDetail();
+    expect(await screen.findByText('Draft bill')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Payments applied' })).not.toBeInTheDocument();
+    expect(asked).toBe(false);
   });
 });
