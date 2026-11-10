@@ -16,7 +16,7 @@ const cards = [
 export function DashboardPage() {
   const { activeOrganizationId, currentFiscalYear } = useOutletContext();
   const asOf = todayInNepal();
-  const fiscalYearStart = currentFiscalYear?.startDate ?? '1900-01-01';
+  const fiscalYearStart = currentFiscalYear?.startDate ?? asOf;
   const aging = useQuery({
     queryKey: ['ar-aging', activeOrganizationId, asOf],
     queryFn: () => apiRequest(`/reports/ar-aging?asOf=${asOf}`),

@@ -10,7 +10,7 @@ import { todayInNepal } from '../lib/date.js';
 
 export function ProfitLossPage() {
   const { activeOrganizationId, currentFiscalYear } = useOutletContext();
-  const [from, setFrom] = useState(currentFiscalYear?.startDate ?? '1900-01-01');
+  const [from, setFrom] = useState(currentFiscalYear?.startDate ?? todayInNepal());
   const [to, setTo] = useState(todayInNepal());
   const report = useQuery({ queryKey: ['profit-loss', activeOrganizationId, from, to], queryFn: () => apiRequest(`/reports/profit-loss?from=${from}&to=${to}`), enabled: Boolean(activeOrganizationId && from && to) });
   const rows = report.data ? [...report.data.revenue.map((row) => ({ section: 'Revenue', ...row })), ...report.data.expense.map((row) => ({ section: 'Expense', ...row })), { section: 'Result', code: '', name: 'Net profit', amount: report.data.netProfit }] : [];

@@ -2,8 +2,9 @@ import { add, sub, mul, round2, dec } from '../money.js';
 
 
 export function computeLine({ quantity, unitPrice, discountPct = 0, taxRate = 0 }) {
+  // ({ quantity, unitPrice, discountPct = 0, taxRate = 0 }) object is destructured since the expected input to the function is a object 
+  //  So inside the function you can simply write: quantity not input.quantity
   const gross = mul(quantity, unitPrice);
-
   const discountAmount = round2(gross.times(discountPct).dividedBy(100));
   const taxableAmount = round2(sub(gross, discountAmount));
   const taxAmount = round2(mul(taxableAmount, taxRate));

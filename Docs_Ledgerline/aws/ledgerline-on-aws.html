@@ -1,0 +1,1219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ledgerline on AWS</title>
+<style>
+:root {
+  --bg: #f6f5f1;
+  --surface: #ffffff;
+  --surface-2: #efede7;
+  --ink: #1c1e22;
+  --ink-2: #464b53;
+  --muted: #777c85;
+  --line: #e0ddd4;
+  --accent: #3b5bdb;
+  --accent-soft: #e5eafc;
+  --ok: #1f9d6b;
+  --bad: #d64545;
+  --c-edge: #7c5cff;
+  --c-network: #2f7de1;
+  --c-compute: #e8772e;
+  --c-data: #1f9d6b;
+  --c-security: #d64545;
+  --c-ops: #6f7782;
+  --c-delivery: #0e9f9e;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 24px rgba(0,0,0,.06);
+  --radius: 14px;
+  --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+  --sans: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111214; --surface: #1a1c20; --surface-2: #23262b; --ink: #ececec; --ink-2: #b8bcc3;
+    --muted: #8a8f98; --line: #2f3238; --accent: #7b93ff; --accent-soft: #232a45;
+    --c-edge: #9b85ff; --c-network: #5b9cf0; --c-compute: #f0924f; --c-data: #3cc08b;
+    --c-security: #ef6b6b; --c-ops: #9aa1ab; --c-delivery: #2cc4c2;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111214; --surface: #1a1c20; --surface-2: #23262b; --ink: #ececec; --ink-2: #b8bcc3;
+  --muted: #8a8f98; --line: #2f3238; --accent: #7b93ff; --accent-soft: #232a45;
+  --c-edge: #9b85ff; --c-network: #5b9cf0; --c-compute: #f0924f; --c-data: #3cc08b;
+  --c-security: #ef6b6b; --c-ops: #9aa1ab; --c-delivery: #2cc4c2;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 24px rgba(0,0,0,.35);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 64px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 var(--sans); }
+a { color: var(--accent); }
+code { font-family: var(--mono); font-size: .88em; background: var(--surface-2); padding: .1em .35em; border-radius: 5px; }
+pre { font-family: var(--mono); font-size: 13px; line-height: 1.55; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; margin: 10px 0; }
+pre code { background: none; padding: 0; }
+button { font: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+
+header.hero { padding: 48px 0 28px; }
+.hero h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.1; margin: 0 0 12px; letter-spacing: -.02em; }
+.hero p.lede { font-size: 18px; color: var(--ink-2); max-width: 760px; margin: 0; }
+.hero .meta { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink-2); }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+
+nav.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+nav.top .wrap { display: flex; gap: 4px; overflow-x: auto; padding-top: 8px; padding-bottom: 8px; align-items: center; }
+nav.top a { white-space: nowrap; text-decoration: none; color: var(--ink-2); font-size: 14px; padding: 6px 12px; border-radius: 8px; }
+nav.top a:hover, nav.top a.on { background: var(--surface); color: var(--ink); }
+nav.top .theme { margin-left: auto; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); border-radius: 8px; padding: 5px 10px; font-size: 13px; white-space: nowrap; }
+
+section { padding: 44px 0 16px; }
+section h2 { font-size: 28px; letter-spacing: -.01em; margin: 0 0 6px; }
+section .sub { color: var(--ink-2); margin: 0 0 22px; max-width: 780px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+
+/* Story */
+.story { display: grid; grid-template-columns: 240px 1fr; gap: 20px; }
+.chapters { display: flex; flex-direction: column; gap: 6px; }
+.chapters button { text-align: left; border: 1px solid transparent; background: none; padding: 10px 12px; border-radius: 10px; color: var(--ink-2); display: flex; gap: 10px; align-items: baseline; }
+.chapters button .n { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.chapters button.on { background: var(--surface); border-color: var(--line); color: var(--ink); box-shadow: var(--shadow); }
+.chapter { padding: 26px 28px; }
+.chapter .time { font-family: var(--mono); font-size: 13px; color: var(--accent); }
+.chapter h3 { font-size: 24px; margin: 4px 0 14px; }
+.chapter p { margin: 0 0 14px; max-width: 70ch; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+.chip { border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 999px; padding: 5px 12px 5px 10px; font-size: 13px; display: inline-flex; gap: 7px; align-items: center; }
+.chip:hover { border-color: var(--accent); }
+.chapter-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 9px; padding: 8px 14px; font-size: 14px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn:disabled { opacity: .45; cursor: default; }
+.mapping { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-top: 18px; }
+.flip { text-align: left; border: 1px solid var(--line); background: var(--surface-2); border-radius: 12px; padding: 12px 14px; color: var(--ink); min-height: 104px; }
+.flip .from { font-family: var(--mono); font-size: 13px; color: var(--ink-2); }
+.flip .to { font-weight: 600; margin-top: 6px; }
+.flip .why { display: none; font-size: 14px; color: var(--ink-2); margin-top: 8px; }
+.flip.open { background: var(--surface); border-color: var(--accent); }
+.flip.open .why { display: block; }
+.flip .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.flip.open .hint { display: none; }
+
+/* Map */
+.map-shell { padding: 14px; }
+.scenarios { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.scenarios button { border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 9px; padding: 7px 12px; font-size: 14px; }
+.scenarios button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.map-wrap { overflow-x: auto; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }
+#map { display: block; width: 100%; min-width: 960px; height: auto; }
+.caption { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); min-height: 64px; }
+.caption .step { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+.caption .text { font-size: 15px; }
+.caption .ctl { display: flex; gap: 6px; }
+.caption .ctl button { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+
+svg text { font-family: var(--sans); }
+.box rect { fill: none; stroke: var(--line); stroke-width: 1.5; }
+.box.region rect { stroke: var(--c-compute); stroke-opacity: .5; stroke-dasharray: 6 5; }
+.box.edge rect { stroke: var(--c-edge); stroke-opacity: .5; stroke-dasharray: 6 5; }
+.box.vpc rect { stroke: var(--c-network); stroke-opacity: .6; fill: var(--surface); fill-opacity: .35; }
+.box.az rect { stroke: var(--muted); stroke-opacity: .5; stroke-dasharray: 3 4; }
+.box.net rect { stroke: none; fill: var(--muted); fill-opacity: .05; }
+.box text { font-size: 12px; fill: var(--muted); font-weight: 600; letter-spacing: .02em; }
+.box.vpc text { cursor: pointer; fill: var(--c-network); }
+.edgeline { fill: none; stroke: var(--muted); stroke-width: 1.4; stroke-opacity: .2; transition: stroke-opacity .2s; }
+.edgeline.hl { stroke-opacity: .7; }
+.edgeline.active { stroke: var(--accent); stroke-opacity: 1; stroke-width: 2.6; stroke-dasharray: 7 5; animation: march 0.8s linear infinite; }
+@keyframes march { to { stroke-dashoffset: -24; } }
+.node { cursor: pointer; }
+.node rect.body { fill: var(--surface); stroke: var(--line); stroke-width: 1.4; transition: stroke .2s, transform .2s; }
+.node:hover rect.body, .node:focus-visible rect.body { stroke: var(--ink-2); }
+.node .label { font-size: 13.5px; font-weight: 650; fill: var(--ink); }
+.node .sublabel { font-size: 11px; fill: var(--muted); }
+.node.active rect.body { stroke: var(--accent); stroke-width: 2.6; }
+.node.down rect.body { stroke: var(--bad); stroke-dasharray: 5 4; }
+.node.down { opacity: .45; }
+.node.changed .sublabel { fill: var(--ok); font-weight: 700; }
+.packet { fill: var(--accent); filter: drop-shadow(0 0 5px var(--accent)); }
+@media (prefers-reduced-motion: reduce) { .edgeline.active { animation: none; } html { scroll-behavior: auto; } }
+
+/* Services */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.filters button { border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); border-radius: 999px; padding: 5px 12px; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+.filters button.on { color: var(--ink); border-color: var(--ink-2); }
+.svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.svc { text-align: left; padding: 16px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.svc .cat::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--cat); margin-right: 7px; vertical-align: 1px; }
+.svc:hover { transform: translateY(-1px); }
+.svc .cat { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.svc h4 { margin: 4px 0 6px; font-size: 18px; }
+.svc p { margin: 0; font-size: 14px; color: var(--ink-2); }
+.svc .role { margin-top: 10px; font-size: 13px; color: var(--cat); font-weight: 600; }
+
+/* Drawer */
+.backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 40; }
+.backdrop.open { opacity: 1; pointer-events: auto; }
+.drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(560px, 100%); background: var(--surface); border-left: 1px solid var(--line); z-index: 50; transform: translateX(102%); transition: transform .25s ease; display: flex; flex-direction: column; box-shadow: var(--shadow); }
+.drawer.open { transform: none; }
+.drawer header { padding: 20px 22px 0; border-top: 5px solid var(--cat); }
+.drawer .close { float: right; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 8px; padding: 4px 10px; }
+.drawer h3 { margin: 4px 0 4px; font-size: 24px; }
+.drawer .dcat { font-size: 12px; color: var(--cat); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; padding-top: 6px; }
+.drawer .what { color: var(--ink-2); margin: 0 0 12px; }
+.tabs { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--line); padding: 0 22px; }
+.tabs button { border: none; background: none; color: var(--muted); padding: 10px 10px; font-size: 14px; white-space: nowrap; border-bottom: 2px solid transparent; }
+.tabs button.on { color: var(--ink); border-bottom-color: var(--cat); }
+.drawer .body { padding: 18px 22px 40px; overflow-y: auto; flex: 1; }
+.drawer .body p { margin: 0 0 12px; }
+.drawer ul { margin: 0 0 12px; padding-left: 20px; }
+.drawer li { margin-bottom: 6px; }
+.pc { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pc > div { border-radius: 10px; padding: 12px 14px; background: var(--surface-2); }
+.pc h5 { margin: 0 0 8px; font-size: 14px; }
+.pc .pro h5 { color: var(--ok); }
+.pc .con h5 { color: var(--bad); }
+.pc ul { padding-left: 18px; font-size: 14px; }
+.alt { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; }
+.alt summary { padding: 10px 14px; cursor: pointer; font-weight: 600; }
+.alt p { padding: 0 14px 12px; margin: 0; color: var(--ink-2); font-size: 14.5px; }
+.links { display: flex; flex-direction: column; gap: 8px; }
+.link { display: flex; gap: 10px; align-items: flex-start; text-align: left; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 10px; padding: 10px 12px; }
+.link b { white-space: nowrap; }
+.link span { color: var(--ink-2); font-size: 14px; }
+.cfg { background: var(--surface-2); border-radius: 10px; padding: 12px 14px; font-size: 14.5px; }
+
+/* Code changes */
+.acc { margin-bottom: 10px; }
+.acc summary { list-style: none; padding: 16px 18px; cursor: pointer; display: flex; gap: 12px; align-items: center; }
+.acc summary::-webkit-details-marker { display: none; }
+.acc summary .num { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; display: grid; place-items: center; flex: none; font-size: 14px; }
+.acc summary .t { font-weight: 600; }
+.acc summary .f { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.acc .inner { padding: 0 18px 16px 58px; }
+.acc .inner p { margin: 0 0 10px; max-width: 75ch; }
+.tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .05em; }
+.tag.must { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+.tag.should { background: color-mix(in srgb, var(--c-compute) 18%, transparent); color: var(--c-compute); }
+.tag.cfg { background: color-mix(in srgb, var(--c-network) 15%, transparent); color: var(--c-network); }
+
+/* Env + costs */
+.toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 14px; }
+.toggle button { border: none; background: var(--surface); color: var(--ink-2); padding: 8px 16px; font-size: 14px; }
+.toggle button.on { background: var(--accent); color: #fff; }
+table.env { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+table.env th, table.env td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.env th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+table.env td:first-child { font-weight: 600; white-space: nowrap; }
+.costs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+.costs .card { padding: 16px 18px; }
+.costs h4 { margin: 0 0 8px; }
+.costs ul { margin: 0; padding-left: 18px; font-size: 14.5px; }
+
+/* Quiz */
+.quiz { display: grid; gap: 12px; }
+.q { padding: 16px 18px; }
+.q h4 { margin: 0 0 10px; font-size: 16px; }
+.q .opts { display: grid; gap: 6px; }
+.q .opts button { text-align: left; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 9px; padding: 9px 12px; font-size: 14.5px; }
+.q .opts button.right { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, var(--surface)); }
+.q .opts button.wrong { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, var(--surface)); }
+.q .explain { display: none; margin-top: 10px; font-size: 14.5px; color: var(--ink-2); }
+.q.done .explain { display: block; }
+.score { font-family: var(--mono); font-size: 14px; color: var(--accent); margin-bottom: 10px; }
+.model { padding: 22px 24px; margin-top: 18px; }
+.model p { margin: 0 0 12px; max-width: 75ch; }
+
+footer { padding: 40px 0 60px; color: var(--muted); font-size: 13px; }
+
+@media (max-width: 820px) {
+  .story { grid-template-columns: 1fr; }
+  .chapters { flex-direction: row; overflow-x: auto; }
+  .chapters button { white-space: nowrap; }
+  .chapter { padding: 20px 18px; }
+  .pc, .costs { grid-template-columns: 1fr; }
+  .caption { grid-template-columns: 1fr; }
+  .acc .inner { padding-left: 18px; }
+  .acc summary .f { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="hero wrap">
+  <h1>Ledgerline on AWS</h1>
+  <p class="lede">How the Ledgerline accounting app moves from one laptop to a production setup in AWS's Mumbai region, told as one working day in the life of an accountant. Every service gets its job, its reason, its trade-offs, and the alternatives that lost.</p>
+  <div class="meta">
+    <span class="pill">Region: ap-south-1 (Mumbai)</span>
+    <span class="pill">React SPA + Express 5 API</span>
+    <span class="pill">PostgreSQL 16 + Redis 7</span>
+    <span class="pill">Click anything that looks clickable</span>
+  </div>
+</header>
+
+<nav class="top" aria-label="Sections">
+  <div class="wrap">
+    <a href="#story">The story</a>
+    <a href="#map-section">Architecture map</a>
+    <a href="#services">Services</a>
+    <a href="#changes">Code changes</a>
+    <a href="#envs">Staging vs production</a>
+    <a href="#check">Self-check</a>
+    <button class="theme" id="themeBtn" type="button">Theme: auto</button>
+  </div>
+</nav>
+
+<main>
+<section id="story" class="wrap">
+  <h2>The story</h2>
+  <p class="sub">Seven short chapters. Each one follows a real request through the system. Press "Play on the map" to watch it move, or click a service chip to read about that part.</p>
+  <div class="story">
+    <div class="chapters" id="chapterNav" role="tablist" aria-label="Chapters"></div>
+    <article class="card chapter" id="chapter" aria-live="polite"></article>
+  </div>
+</section>
+
+<section id="map-section" class="wrap">
+  <h2>Architecture map</h2>
+  <p class="sub">The whole system on one screen. Click a box to open that service. Hover to see what it connects to. Pick a scenario to watch a request travel, step by step.</p>
+  <div class="card map-shell">
+    <div class="scenarios" id="scenarioBtns"></div>
+    <div class="map-wrap"><svg id="map" viewBox="0 0 1200 780" role="img" aria-label="Ledgerline AWS architecture diagram"></svg></div>
+    <div class="caption">
+      <div><div class="step" id="capStep">Pick a scenario</div><div class="text" id="capText">Or click any service box to learn what it does.</div></div>
+      <div class="ctl">
+        <button type="button" id="prevBtn" aria-label="Previous step">Prev</button>
+        <button type="button" id="playBtn">Play</button>
+        <button type="button" id="nextBtn" aria-label="Next step">Next</button>
+        <button type="button" id="resetBtn">Reset</button>
+      </div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+</section>
+
+<section id="services" class="wrap">
+  <h2>Services</h2>
+  <p class="sub">Seventeen parts, grouped by the job they do. Each card opens the full breakdown: its role in the story, the main reason it exists, use cases, pros and cons, and the alternatives with the reason each one loses for Ledgerline.</p>
+  <div class="filters" id="filters"></div>
+  <div class="svc-grid" id="svcGrid"></div>
+</section>
+
+<section id="changes" class="wrap">
+  <h2>Code changes before the first deploy</h2>
+  <p class="sub">Ledgerline runs on AWS almost as it is. A few things in the repo assume localhost and need adjusting. You write these yourself; each card says which file and where. The first two are real bugs once the app sits behind a load balancer.</p>
+
+  <details class="card acc">
+    <summary><span class="num">1</span><span class="t">Tell Express it sits behind two proxies</span> <span class="tag must">must</span><span class="f">backend/src/app.js</span></summary>
+    <div class="inner">
+      <p>On AWS a request passes CloudFront, then the ALB, then reaches Express. The TCP connection Express sees comes from the ALB, so <code>req.ip</code> is the load balancer's private address for every user. <code>rate-limit.js</code> keys <code>globalLimiter</code> and <code>authLimiter</code> on <code>req.ip</code>, which means every accountant in every firm would share one bucket of 300 requests a minute and one bucket of 5 login attempts per email.</p>
+      <p>CloudFront writes the visitor's address into <code>X-Forwarded-For</code>, and the ALB appends CloudFront's address. Setting <code>trust proxy</code> to <code>2</code> tells Express to skip exactly those two hops and read the real client address.</p>
+<pre><code>// backend/src/app.js, directly after `const app = express();`
+// CloudFront -> ALB -> this process: two proxies in front of Express.
+// Without this, req.ip is the ALB's address and all users share one
+// rate-limit bucket.
+app.set('trust proxy', 2);</code></pre>
+      <p>The number has to match the real hop count. If someone could reach the ALB directly, skipping CloudFront, they could forge <code>X-Forwarded-For</code> and pick their own IP. The ALB security group closes that door by accepting traffic only from CloudFront's managed prefix list. Use a number here, never <code>true</code>: <code>true</code> trusts every hop, and express-rate-limit warns about it for this reason.</p>
+      <p>How to check it after deploy: log <code>req.ip</code> once on a test request from your phone's network and confirm it shows your public IP, not a 10.0.x.x address.</p>
+    </div>
+  </details>
+
+  <details class="card acc">
+    <summary><span class="num">2</span><span class="t">Shut down cleanly on SIGTERM</span> <span class="tag must">must</span><span class="f">backend/src/index.js</span></summary>
+    <div class="inner">
+      <p>Every deploy and every scale-in, ECS sends the task <code>SIGTERM</code> and waits up to 30 seconds before <code>SIGKILL</code>. Today <code>index.js</code> ignores the signal, so Node exits immediately and any request still in flight (say, a receipt being posted) gets a dropped connection. Postgres rolls the transaction back, so the ledger stays correct, but the user sees an error during a normal deploy.</p>
+<pre><code>// backend/src/index.js: keep the server handle
+const server = app.listen(env.PORT, () => {
+  console.log(`Server running on port ${env.PORT}`);
+});
+
+// ECS sends SIGTERM on deploy and scale-in, then SIGKILL 30s later.
+// Stop taking new connections and let in-flight requests finish.
+process.on('SIGTERM', () => {
+  server.close(() => process.exit(0));
+});</code></pre>
+      <p>One easy-to-miss detail: the signal only reaches Node if Node is the main process in the container. Use the exec form <code>CMD ["node", "src/index.js"]</code> in the Dockerfile. Running through <code>npm start</code> puts npm in front, and npm does not reliably forward the signal.</p>
+    </div>
+  </details>
+
+  <details class="card acc">
+    <summary><span class="num">3</span><span class="t">Add a Dockerfile for the API</span> <span class="tag should">new file</span><span class="f">backend/Dockerfile</span></summary>
+    <div class="inner">
+      <p>ECS runs container images, so the backend needs a recipe for one. This version installs all dependencies, including dev ones, because the same image also runs <code>prisma migrate deploy</code> and the Prisma CLI is a devDependency. That makes the image larger. Splitting it into a slim runtime image and a migration image is a reasonable step later, when image size starts to matter.</p>
+<pre><code># backend/Dockerfile (build from the repo root: docker build -f backend/Dockerfile .)
+FROM node:22-slim
+WORKDIR /app
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci
+COPY backend/ ./
+RUN npx prisma generate
+# RDS CA bundle so Postgres TLS can be verified (see card 4)
+ADD --chmod=644 https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /app/certs/global-bundle.pem
+ENV NODE_ENV=production
+USER node
+EXPOSE 3000
+CMD ["node", "src/index.js"]</code></pre>
+      <p>Add a <code>backend/.dockerignore</code> with <code>node_modules</code>, <code>.env</code>, <code>coverage</code>, and <code>src/generated</code>, so local files never get copied into the image. <code>node:22-slim</code> matches the Node version in CI and is glibc based, which is what the prebuilt <code>@node-rs/argon2</code> binary expects. The <code>--chmod=644</code> matters: files fetched by <code>ADD</code> from a URL are readable only by root otherwise, and the app runs as the <code>node</code> user.</p>
+    </div>
+  </details>
+
+  <details class="card acc">
+    <summary><span class="num">4</span><span class="t">Encrypt the Postgres and Redis connections</span> <span class="tag cfg">config only</span><span class="f">Secrets Manager values</span></summary>
+    <div class="inner">
+      <p>RDS for PostgreSQL 15 and newer rejects unencrypted connections by default (<code>rds.force_ssl</code> is on). ElastiCache with in-transit encryption needs the <code>rediss://</code> scheme. Neither needs code; only the connection strings change, and they live in Secrets Manager, never in git.</p>
+<pre><code>DATABASE_URL=postgresql://USER:PASSWORD@ledgerline-prod.xxxx.ap-south-1.rds.amazonaws.com:5432/ledgerline?sslmode=verify-full&amp;sslrootcert=/app/certs/global-bundle.pem
+REDIS_URL=rediss://master.ledgerline-cache.xxxx.aps1.cache.amazonaws.com:6379
+CORS_ORIGINS=https://app.ledgerline.com
+NODE_ENV=production</code></pre>
+      <p><code>verify-full</code> checks both that the traffic is encrypted and that the server really is your RDS instance, using the CA bundle the Dockerfile downloaded. <code>NODE_ENV=production</code> also turns on the <code>secure</code> flag on the refresh cookie in <code>auth.js</code>. <code>env.js</code> validates all of these at boot, so a typo stops the task before it takes traffic, and the ECS deployment circuit breaker rolls back.</p>
+    </div>
+  </details>
+
+  <details class="card acc">
+    <summary><span class="num">5</span><span class="t">Run migrations as a one-off task, and keep them backward compatible</span> <span class="tag cfg">process</span><span class="f">deploy job</span></summary>
+    <div class="inner">
+      <p>Today you run <code>npx prisma migrate deploy</code> by hand, and CI runs it before tests. In production it runs as a one-off Fargate task, using the same image with the command overridden, before ECS rolls out new code. The task sits in the private subnet next to the API, so it can reach RDS while RDS stays off the internet.</p>
+<pre><code>aws ecs run-task --cluster ledgerline --launch-type FARGATE \
+  --task-definition ledgerline-api \
+  --overrides '{"containerOverrides":[{"name":"api","command":["npx","prisma","migrate","deploy"]}]}' \
+  --network-configuration 'awsvpcConfiguration={subnets=[subnet-app-a],securityGroups=[sg-api]}'</code></pre>
+      <p>The subtle part: during a rolling deploy, old tasks keep serving for a minute or so against the new schema. A migration that renames or drops a column the old code still reads will break those requests. Add first, ship the code that uses it, and drop the old thing in a later release.</p>
+    </div>
+  </details>
+
+  <details class="card acc">
+    <summary><span class="num">6</span><span class="t">Leave the frontend API URL alone</span> <span class="tag cfg">no change</span><span class="f">frontend/src/lib/api-client.js</span></summary>
+    <div class="inner">
+      <p><code>api-client.js</code> falls back to <code>/api/v1</code> when <code>VITE_API_URL</code> is unset. Because CloudFront serves the SPA and routes <code>/api/*</code> to the ALB under the same domain, that relative path already points at the right place. Setting <code>VITE_API_URL</code> to a separate API domain would make the requests cross-site, and the refresh cookie (<code>sameSite: 'strict'</code>, <code>path: '/api/v1/auth'</code>) would stop being sent.</p>
+    </div>
+  </details>
+</section>
+
+<section id="envs" class="wrap">
+  <h2>Staging vs production</h2>
+  <p class="sub">Same architecture, different sizes. Staging can drop most of the redundancy because an outage there costs you an afternoon, while one in production costs a firm its month-end close.</p>
+  <div class="toggle" role="tablist" aria-label="Environment">
+    <button type="button" class="on" data-env="prod">Production</button>
+    <button type="button" data-env="staging">Staging</button>
+  </div>
+  <div class="card" style="overflow-x:auto"><table class="env" id="envTable"></table></div>
+  <div class="costs">
+    <div class="card"><h4>Billed every hour, even with zero users</h4>
+      <ul>
+        <li>RDS instance hours (Multi-AZ doubles them)</li>
+        <li>ElastiCache node hours</li>
+        <li>Fargate vCPU and memory hours per running task</li>
+        <li>ALB hours plus capacity units</li>
+        <li>NAT gateway hours, per gateway</li>
+        <li>WAF web ACL and rules, KMS customer keys, Secrets Manager secrets (monthly)</li>
+      </ul>
+    </div>
+    <div class="card"><h4>Billed by usage</h4>
+      <ul>
+        <li>NAT gateway data processed per GB</li>
+        <li>CloudFront data transfer and requests</li>
+        <li>CloudWatch log ingestion per GB, and storage if retention is left at forever</li>
+        <li>WAF requests inspected</li>
+        <li>S3 storage and requests (tiny for a SPA)</li>
+        <li>ECR image storage</li>
+      </ul>
+      <p style="font-size:14px;color:var(--ink-2);margin:10px 0 0">Plug the production column into the AWS Pricing Calculator with region ap-south-1 for real numbers. The always-on list is what sets the floor.</p>
+    </div>
+  </div>
+</section>
+
+<section id="check" class="wrap">
+  <h2>Self-check</h2>
+  <p class="sub">Questions about reasons, not names. If you can answer these without scrolling up, you understand the design well enough to explain it.</p>
+  <div class="score" id="score">0 / 0 answered</div>
+  <div class="quiz" id="quiz"></div>
+
+  <div class="card model">
+    <h3 style="margin-top:0">The one-minute version</h3>
+    <p>Ledgerline on AWS is the same app split across managed parts. The React build sits in a private S3 bucket. CloudFront serves it from the edge and also routes <code>/api/*</code> to a load balancer, so the SPA and the API share one domain and the strict refresh cookie keeps working. WAF filters abusive traffic at the edge.</p>
+    <p>In Mumbai, the ALB spreads API requests across two Fargate tasks in two Availability Zones. Each task is the unchanged Express app. They share one Multi-AZ Postgres 16 database, where the ledger's balancing triggers and transactions live, and one Valkey cluster for rate-limit counters. Everything with data sits in private subnets behind a chain of security groups.</p>
+    <p>Secrets come from Secrets Manager, encrypted with KMS. Logs and alarms go to CloudWatch. GitHub Actions tests every merge, then deploys with short-lived IAM credentials: image to ECR, migration task, rolling ECS update, frontend to S3, cache invalidation.</p>
+    <p>If one Availability Zone fails, the ALB, RDS, and Valkey each move to the other one. Because every ledger write is a transaction, the failover can drop requests but cannot leave a half-posted entry behind.</p>
+  </div>
+</section>
+</main>
+
+<footer class="wrap">Ledgerline AWS design notes. Resource names, sizes, and IDs on this page are proposals for a deployment that doesn't exist yet.</footer>
+
+<div class="backdrop" id="backdrop"></div>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="dTitle" role="dialog">
+  <header id="dHead">
+    <button class="close" id="dClose" type="button">Close</button>
+    <div class="dcat" id="dCat"></div>
+    <h3 id="dTitle"></h3>
+    <p class="what" id="dWhat"></p>
+  </header>
+  <div class="tabs" id="dTabs" role="tablist"></div>
+  <div class="body" id="dBody"></div>
+</aside>
+
+<script>
+const CATS = {
+  edge: { name: 'Edge and delivery', color: 'var(--c-edge)' },
+  network: { name: 'Network', color: 'var(--c-network)' },
+  compute: { name: 'Compute', color: 'var(--c-compute)' },
+  data: { name: 'Data', color: 'var(--c-data)' },
+  security: { name: 'Security and identity', color: 'var(--c-security)' },
+  ops: { name: 'Operations', color: 'var(--c-ops)' },
+  delivery: { name: 'Build and deploy', color: 'var(--c-delivery)' },
+};
+
+const SERVICES = {
+  route53: {
+    name: 'Route 53', cat: 'edge', role: 'Gives out directions',
+    what: `AWS's DNS service. It turns app.ledgerline.com into an address the browser can connect to.`,
+    story: `Every visit starts here, before any Ledgerline code runs. When Sita types app.ledgerline.com, her browser asks Route 53 where that name lives. Route 53 answers with an alias record that points at the CloudFront distribution. It never sees her data. It hands out directions and steps aside.`,
+    why: `Names have to resolve somewhere. Route 53 is the DNS service that knows about other AWS resources, so an alias record can point a domain at CloudFront or a load balancer, including the bare domain (ledgerline.com), where ordinary DNS doesn't allow a CNAME.`,
+    useCases: [`Pointing a domain at a CloudFront distribution or a load balancer`, `Failover routing that sends traffic to a backup region when health checks fail`, `Latency-based routing for apps deployed in several regions`, `Private hosted zones, so internal services find each other by name inside a VPC`],
+    ledgerline: `One public hosted zone for ledgerline.com. An A/AAAA alias record for app.ledgerline.com points at CloudFront. The CNAME records ACM uses to validate certificates also live here, so certificates renew with nobody touching them.`,
+    pros: [`Alias queries to AWS resources are free and work at the zone apex`, `100% availability SLA`, `ACM validates certificates against it automatically`],
+    cons: [`Monthly charge per hosted zone plus per-query fees`, `Moving an existing domain means changing nameservers at the registrar, which needs care`, `Most of its routing policies are more than a single-region app uses`],
+    alts: [
+      { name: 'Cloudflare DNS', why: `Works well and is free. It adds a second vendor, and you lose native alias records and ACM's one-click DNS validation, so you wire those by hand.` },
+      { name: 'Registrar DNS (GoDaddy, Namecheap)', why: `Usually can't alias the bare domain to CloudFront, and its records can't be managed alongside the rest of the AWS setup.` },
+    ],
+    links: [['cloudfront', 'Alias record points the domain at the distribution'], ['acm', 'Holds the CNAME records that prove domain ownership for certificates']],
+  },
+  waf: {
+    name: 'AWS WAF', cat: 'security', role: 'Guards the gate',
+    what: `A web application firewall. It inspects each HTTP request at the CloudFront edge and blocks the ones that match its rules.`,
+    story: `WAF stands beside CloudFront like a guard at the gate. Before a request travels on to Mumbai, WAF checks it against AWS managed rule sets for known exploit patterns and against a rate rule on the login endpoints. A bot trying ten thousand passwords gets turned away at the edge, so it never costs the API a database query or an argon2 hash.`,
+    why: `Some bad traffic is cheaper to stop before it reaches your servers. Ledgerline already rate-limits inside Express, but that check runs after the request has used a load balancer, a container, and a Redis round trip. WAF puts a first filter out at the edge.`,
+    useCases: [`Blocking SQL injection and XSS patterns with managed rules`, `Rate-based rules per IP for login and signup endpoints`, `Geo restrictions or allow lists for admin paths`, `Bot control against scraping and credential stuffing`],
+    ledgerline: `One web ACL attached to the CloudFront distribution with the Common and KnownBadInputs managed rule groups, plus a rate-based rule scoped to <code>/api/v1/auth/</code>. Start in count mode for a week, then switch to block, so a false positive doesn't lock real accountants out on day one.`,
+    pros: [`Stops attacks before they cost compute`, `Managed rule groups are kept current by AWS`, `Logs every blocked request for review`],
+    cons: [`Charged per web ACL, per rule, and per million requests`, `Managed rules can flag legitimate payloads such as an unusual CSV upload, so they need tuning`, `Its rate rules count over minutes, so the app's own limit of 5 logins per 15 minutes still has to exist`],
+    alts: [
+      { name: 'Shield Advanced', why: `DDoS protection with a response team and cost protection, priced as a monthly subscription aimed at large companies. Shield Standard is already free and on for every CloudFront distribution.` },
+      { name: 'Only the Express rate limiter', why: `Ledgerline keeps it. Used alone, every attack request still reaches a container and Redis before being refused.` },
+      { name: 'Cloudflare in front', why: `A strong WAF, but it means a second CDN in front of CloudFront, or replacing CloudFront, which splits the edge across two vendors.` },
+    ],
+    links: [['cloudfront', 'Attached to the distribution; sees every request first'], ['cloudwatch', 'Sends metrics and sampled blocked requests']],
+  },
+  cloudfront: {
+    name: 'CloudFront', cat: 'edge', role: 'Front door and traffic director',
+    what: `AWS's content delivery network. Edge servers around the world sit between users and your origins, cache what can be cached, and handle HTTPS close to the user.`,
+    story: `CloudFront is the front door and the traffic director at once. It owns one address, app.ledgerline.com, and splits requests by path. Anything under <code>/api/*</code> goes to the load balancer in Mumbai with caching off. Everything else, the React bundle and index.html and icons, comes from S3 and is cached at the edge. Because both halves share one origin, the refresh cookie with <code>SameSite=Strict</code> keeps working and the browser never makes a cross-origin call.`,
+    why: `The frontend is static files, and static files load fastest from a server near the user. For Ledgerline there's a second reason that matters more: one domain for both the SPA and the API removes CORS preflights and lets the strict cookie policy in <code>auth.js</code> work unchanged.`,
+    useCases: [`Serving SPAs and static sites from S3`, `Caching API responses that are safe to share`, `Video and large file delivery`, `Putting several backends behind one domain with path routing`],
+    ledgerline: `Two origins: the S3 bucket, reached through Origin Access Control, and the ALB. The default behavior goes to S3 with the CachingOptimized policy. The <code>/api/*</code> behavior goes to the ALB with CachingDisabled and an origin request policy that forwards cookies, query strings, and the Authorization header. A custom error response turns S3's 403 and 404 into <code>/index.html</code> with status 200, so React Router links like <code>/invoices/42</code> load when opened directly.`,
+    pros: [`Static files arrive from the nearest edge`, `Shield Standard DDoS protection at no charge`, `One domain for frontend and API`, `Origins stay hidden behind it`],
+    cons: [`Configuration changes take several minutes to roll out`, `Deploys need a cache invalidation step for index.html`, `A wrong cache policy on <code>/api/*</code> could serve one user's data to another, so that behavior must have caching disabled`],
+    alts: [
+      { name: 'S3 static website hosting alone', why: `No HTTPS on a custom domain, and the API would live on another domain, which breaks the SameSite=Strict refresh cookie.` },
+      { name: 'Amplify Hosting', why: `Very easy for SPAs, but it puts the frontend on a domain separate from the API. Ledgerline would then need cross-site cookies and CORS, which weakens the current cookie policy.` },
+      { name: 'Serving the SPA from Express', why: `Works, but every JS download then uses container time and travels from Mumbai with no edge cache.` },
+    ],
+    links: [['route53', 'Receives traffic through the alias record'], ['waf', 'Has every request inspected before forwarding'], ['acm', 'Presents the certificate stored in us-east-1'], ['s3', 'Fetches the React build, signed with Origin Access Control'], ['alb', 'Forwards /api/* with caching disabled']],
+  },
+  acm: {
+    name: 'Certificate Manager (ACM)', cat: 'security', role: 'Issues the padlock',
+    what: `Free TLS certificates for AWS load balancers and CloudFront, renewed automatically.`,
+    story: `ACM is the notary. It issues the certificate that makes the browser show a padlock for app.ledgerline.com. Two certificates exist: one in us-east-1 for CloudFront, which only reads certificates from that region, and one in ap-south-1 for the ALB, so the hop from CloudFront to the load balancer is encrypted too.`,
+    why: `Anything with a login needs HTTPS, and expired certificates are a classic cause of outages. With DNS validation, ACM renews on its own.`,
+    useCases: [`HTTPS on CloudFront, ALB, and API Gateway`, `Wildcard certificates covering many subdomains`, `Private certificates for internal services (a separate, paid product)`],
+    ledgerline: `A certificate for app.ledgerline.com in us-east-1 for CloudFront, and one for the ALB's origin name in ap-south-1. Both validated through Route 53, so renewal needs no attention.`,
+    pros: [`Public certificates are free`, `Automatic renewal`, `Private keys never leave AWS`],
+    cons: [`Public certificates can't be exported to your own servers`, `The us-east-1 rule for CloudFront catches almost everyone once`, `Only works with integrated AWS services`],
+    alts: [
+      { name: `Let's Encrypt`, why: `Also free, but you run renewal yourself and upload each new certificate to CloudFront and the ALB. ACM does both for you.` },
+      { name: 'Purchased certificates', why: `Cost money and expire on a date someone has to remember.` },
+    ],
+    links: [['cloudfront', 'Certificate in us-east-1'], ['alb', 'Certificate in ap-south-1 for the HTTPS listener'], ['route53', 'Validates domain ownership through DNS records']],
+  },
+  s3: {
+    name: 'S3', cat: 'data', role: 'Warehouse for the frontend',
+    what: `Object storage. You put files in buckets and get them back by key, with very high durability.`,
+    story: `S3 is the warehouse for the frontend. The deploy job builds the Vite app and uploads the <code>dist</code> folder. The bucket is private and nobody can read it directly except CloudFront, because Origin Access Control signs CloudFront's requests and the bucket policy trusts that one distribution.`,
+    why: `A built React app is a folder of files. S3 stores files cheaply and durably and pairs naturally with CloudFront.`,
+    useCases: [`Static site and SPA hosting behind a CDN`, `Backups and database exports`, `User uploads such as receipts and attachments`, `Data lake storage for analytics`],
+    ledgerline: `One private bucket with Block Public Access on and versioning enabled, so a bad frontend deploy can be rolled back. Hashed asset files get long cache headers; index.html gets <code>no-cache</code> so new releases appear right away. Bank CSVs are not stored here: the API parses them in memory (multer <code>memoryStorage</code>, 2 MB cap) and writes the lines to Postgres. A bucket for original uploads can come later if auditors ask for the raw file.`,
+    pros: [`Designed for eleven nines of durability`, `Pennies for a small static site`, `Versioning and lifecycle rules built in`],
+    cons: [`Easy to misconfigure as public, so keep Block Public Access on`, `It's not a filesystem; files are replaced whole`, `Request costs add up for many small files with no CDN in front`],
+    alts: [
+      { name: 'EFS', why: `A shared network filesystem for servers. The frontend doesn't need a server, so a filesystem is the wrong shape.` },
+      { name: 'Frontend baked into the API image', why: `Ties frontend releases to backend releases and gives up edge caching.` },
+    ],
+    links: [['cloudfront', 'Only CloudFront may read the bucket'], ['github', 'Deploy job uploads each new build'], ['kms', 'Objects encrypted at rest']],
+  },
+  vpc: {
+    name: 'VPC', cat: 'network', role: 'The walled compound',
+    what: `Your own private network inside AWS, split into subnets across Availability Zones, with route tables and security groups deciding who can talk to whom.`,
+    story: `The VPC is the walled compound. Inside are three layers of subnets in two Availability Zones, which are separate data centers in Mumbai. Public subnets hold only the load balancer and the NAT gateways. Private app subnets hold the containers. Private data subnets hold Postgres and Valkey and have no route to the internet at all. Security groups form a chain: the ALB accepts HTTPS only from CloudFront, the containers accept port 3000 only from the ALB, and the database accepts 5432 only from the containers.`,
+    why: `A database full of ledgers should never be reachable from the internet. A VPC gives you the network walls to guarantee it, and spreading across Availability Zones gives you a second building for the day one fails.`,
+    useCases: [`Keeping databases off the internet`, `Connecting to an office network over VPN`, `Separating production and staging networks`, `Private access to AWS services through VPC endpoints`],
+    ledgerline: `<code>10.0.0.0/16</code> across ap-south-1a and ap-south-1b, six subnets (public, app, data in each zone). Security group chain: <code>sg-alb</code> allows 443 from CloudFront's origin-facing prefix list; <code>sg-api</code> allows 3000 from <code>sg-alb</code>; <code>sg-db</code> allows 5432 from <code>sg-api</code>; <code>sg-cache</code> allows 6379 from <code>sg-api</code>.`,
+    pros: [`Strong network isolation`, `Security groups can reference each other, so rules survive IP changes`, `The VPC itself is free`],
+    cons: [`Subnet and routing design takes thought up front`, `Mistakes show up as silent timeouts, which are slow to debug`, `NAT gateways and interface endpoints cost money every hour`],
+    alts: [
+      { name: 'Default VPC', why: `Every subnet is public. Fine for experiments, wrong for a ledger database.` },
+      { name: 'Lightsail', why: `Simpler networking that hides subnets, at the cost of fine-grained security groups and private data subnets.` },
+    ],
+    links: [['alb', 'Public subnets'], ['nat', 'Public subnets, outbound only'], ['ecs', 'Private app subnets'], ['rds', 'Private data subnets'], ['elasticache', 'Private data subnets']],
+  },
+  nat: {
+    name: 'NAT Gateway', cat: 'network', role: 'One-way door out',
+    what: `A managed gateway that lets resources in private subnets make outbound connections while staying unreachable from outside.`,
+    story: `The containers have no public IP, yet a new task has to pull its image from ECR, fetch its secrets, and ship logs to CloudWatch. The NAT gateway is the one-way door that lets those calls out. Nothing from the internet can come back in through it.`,
+    why: `Private subnets keep things safe, but most software still needs to call something outside. NAT allows outbound traffic without opening anything inbound.`,
+    useCases: [`Private containers calling third-party APIs such as payments or email`, `Downloading OS and package updates`, `Reaching AWS service endpoints when no VPC endpoint is set up`],
+    ledgerline: `One NAT gateway per Availability Zone in production, so losing ap-south-1a doesn't cut ap-south-1b off from ECR. Staging can run a single NAT. A free S3 gateway endpoint carries ECR's image layer downloads, which are served from S3, without going through NAT.`,
+    pros: [`Fully managed and scales on its own`, `No inbound exposure`, `Nothing to patch`],
+    cons: [`Charged per hour per gateway even when idle, plus per GB processed. Often the surprise line on a small AWS bill`, `A single NAT is a dependency on one zone`, `Data processing fees grow with chatty workloads`],
+    alts: [
+      { name: 'VPC interface endpoints only', why: `Private links to ECR, Secrets Manager, and CloudWatch Logs with no NAT at all. Also charged per hour per zone, one per service. A good swap later if the app never calls anything outside AWS.` },
+      { name: 'NAT instance on EC2', why: `Cheaper, but you patch it, watch it, and fail it over yourself.` },
+      { name: 'Public IPs on tasks', why: `Puts the containers on the internet, which defeats the private subnet.` },
+    ],
+    links: [['ecs', 'Carries outbound calls from tasks'], ['ecr', 'Image pulls on task start'], ['secrets', 'Secret fetches on task start'], ['cloudwatch', 'Log delivery']],
+  },
+  alb: {
+    name: 'Application Load Balancer', cat: 'network', role: 'Dispatcher in the lobby',
+    what: `A layer 7 load balancer. It reads HTTP requests and hands each one to a healthy target.`,
+    story: `The ALB is the dispatcher in the lobby. CloudFront hands it API requests, and the ALB picks a healthy container in either zone. Every 15 seconds it calls <code>GET /healthz</code> on each container, and one that stops answering stops getting traffic. During a deploy it drains old containers: no new requests go to them, and the ones in flight get time to finish.`,
+    why: `Running more than one copy of the API needs something to spread traffic and route around failures. Rolling deploys need the same thing.`,
+    useCases: [`Spreading traffic across containers or instances`, `Path and host based routing to different services`, `Blue/green deploys with weighted target groups`, `HTTPS termination with ACM certificates`],
+    ledgerline: `Internet-facing, in both public subnets. HTTPS listener with the ACM certificate. One target group of IP targets on port 3000, health check on <code>/healthz</code>. Deregistration delay lowered from the default 300 seconds to 30, since no Ledgerline request should take longer. Its security group admits only CloudFront's origin-facing prefix list.`,
+    pros: [`Health checks with automatic routing around failures`, `ECS registers and removes tasks for you`, `HTTP/2 and WebSocket support`],
+    cons: [`Hourly charge plus capacity units, even with no traffic`, `One more hop, with its own 60-second idle timeout`, `Has to be locked down so attackers can't skip CloudFront and WAF`],
+    alts: [
+      { name: 'API Gateway (HTTP API)', why: `Built around Lambda and per-request features. In front of Fargate it needs a VPC link and Cloud Map, two extra pieces that recreate what the ALB does natively.` },
+      { name: 'Network Load Balancer', why: `Works at layer 4, so it can't route by path, and Ledgerline benefits from HTTP-aware health checks and routing.` },
+      { name: 'A single container, no balancer', why: `No redundancy and downtime on every deploy.` },
+    ],
+    links: [['cloudfront', 'Receives /api/* requests'], ['ecs', 'Sends each request to a healthy task'], ['acm', 'Uses the regional certificate'], ['cloudwatch', 'Reports 5xx counts and latency']],
+  },
+  ecs: {
+    name: 'ECS on Fargate', cat: 'compute', role: 'The workforce',
+    what: `ECS runs and supervises containers. Fargate is the mode where AWS supplies the machines, so there is no server for you to see or patch.`,
+    story: `ECS Fargate is the workforce. Each task is one running copy of the Express API from <code>backend/src/index.js</code>. ECS keeps two running at all times, one per zone. If a task crashes, ECS starts a replacement. When CPU climbs at month-end close, auto scaling adds tasks, and removes them when things quiet down. Each task gets its secrets at start, writes logs to CloudWatch, and registers itself with the ALB.`,
+    why: `Ledgerline is a long-running Node process with a Prisma connection pool and a Redis client opened at boot (<code>rate-limit.js</code> runs <code>await redisClient.connect()</code> on import). A container that stays up fits that shape, and Fargate runs it without anyone managing EC2 instances.`,
+    useCases: [`Web APIs and backends`, `Background workers reading from queues`, `Scheduled jobs`, `One-off admin tasks such as database migrations`],
+    ledgerline: `One cluster and one service: desired count 2, min 2, max 6, starting at 0.5 vCPU and 1 GB per task. Rolling deploys with minimum healthy 100% and maximum 200%, so new tasks pass health checks before old ones stop. Deployment circuit breaker with automatic rollback. The same image, with its command overridden, runs <code>npx prisma migrate deploy</code> once per release.`,
+    pros: [`No servers to patch`, `Each task has its own security group and IAM role`, `Rolling deploys with automatic rollback`, `The same Docker image you can run locally`],
+    cons: [`Costs more per unit of compute than EC2 you manage yourself`, `A fresh task takes tens of seconds to start while the image downloads`, `Task definitions and IAM roles are verbose`],
+    alts: [
+      { name: 'Lambda', why: `Every concurrent invocation opens its own database connections, so Prisma with Postgres needs RDS Proxy in between. The top-level Redis connect, the in-memory CSV upload, and the Express app itself all assume one long-lived process. It can be made to work, with more rework than Ledgerline needs.` },
+      { name: 'EKS (Kubernetes)', why: `Powerful, but it adds a control plane fee and a whole platform to learn for a single service.` },
+      { name: 'EC2 with PM2', why: `Cheapest per hour, and you patch the OS, handle scaling, and replace failed machines yourself.` },
+      { name: 'Elastic Beanstalk', why: `Still works, but it manages EC2 instances that remain your responsibility, and AWS's newer container tooling centers on ECS.` },
+    ],
+    links: [['alb', 'Receives requests, answers health checks'], ['rds', 'Reads and writes the ledger through Prisma'], ['elasticache', 'Shares rate-limit counters'], ['secrets', 'Gets JWT_SECRET and connection strings at start'], ['ecr', 'Pulls its image'], ['cloudwatch', 'Sends logs and metrics'], ['iam', 'Runs under a task role and an execution role']],
+  },
+  ecr: {
+    name: 'ECR', cat: 'delivery', role: 'Shelf of finished builds',
+    what: `A private Docker image registry inside your AWS account.`,
+    story: `ECR is the shelf where finished builds wait. The deploy job builds the backend image and pushes it tagged with the git commit SHA. When ECS starts a task it pulls that exact tag, so the tag tells you which commit is running, and rolling back means pointing the service at an older one.`,
+    why: `Containers need a registry. ECR lives inside IAM, so access is granted by role, and pulls stay in the region.`,
+    useCases: [`Images for ECS, EKS, and Lambda`, `Scanning images for known vulnerabilities`, `Sharing images across AWS accounts`],
+    ledgerline: `One repository, <code>ledgerline-api</code>. Immutable tags so a SHA can never be overwritten, scan on push, and a lifecycle rule keeping the last 30 images.`,
+    pros: [`Access through IAM, no extra passwords`, `Built-in vulnerability scanning`, `No pull rate limits from inside AWS`],
+    cons: [`Storage and cross-region transfer cost money`, `Needs lifecycle rules or old images pile up`, `Another place images live if you also publish elsewhere`],
+    alts: [
+      { name: 'Docker Hub', why: `Pull rate limits, and ECS would need a stored registry credential.` },
+      { name: 'GitHub Container Registry', why: `Works, but ECS needs stored registry credentials, and every pull crosses the internet through NAT.` },
+    ],
+    links: [['github', 'Receives pushed images'], ['ecs', 'Serves images to new tasks'], ['iam', 'Push and pull rights granted by role']],
+  },
+  rds: {
+    name: 'RDS for PostgreSQL', cat: 'data', role: 'The vault where the books live',
+    what: `Managed relational databases. AWS runs the Postgres server, backups, patching, and failover; you own the schema and the queries.`,
+    story: `RDS is the vault where the books live. Every invoice, receipt, journal entry, and audit row lands here. Ledgerline leans on Postgres heavily: deferred constraint triggers refuse any journal entry whose debits and credits don't balance at commit, transactions make each posting all-or-nothing, and pg_trgm scores bank-line descriptions against party names during reconciliation. Multi-AZ keeps a synchronous standby in the second zone. If the primary fails, RDS promotes the standby and moves the database's DNS name to it.`,
+    why: `Ledgerline's correctness rules are written in Postgres: triggers, constraints, trigram matching, and SQL reports like the trial balance. They should run on a database that someone else keeps backed up and patched.`,
+    useCases: [`Transactional apps such as finance, orders, and bookings`, `Anything that needs SQL joins and reports`, `Moving an existing Postgres or MySQL database to the cloud`],
+    ledgerline: `PostgreSQL 16 to match docker-compose and CI. Multi-AZ, a db.t4g.medium to start, gp3 storage, encrypted with KMS, automated backups kept 14 days with point-in-time restore, deletion protection on, <code>rds.force_ssl</code> on. The master password is managed in Secrets Manager. pg_trgm is a supported extension, so the existing migration runs as is.`,
+    pros: [`Backups, point-in-time restore, and minor patching handled`, `Multi-AZ failover, typically one to two minutes`, `Supports the extensions Ledgerline uses`],
+    cons: [`Multi-AZ roughly doubles the instance cost`, `No superuser access; a few extensions and settings are off limits`, `Major version upgrades still need a plan and a rehearsal`],
+    alts: [
+      { name: 'Aurora PostgreSQL', why: `Faster failover and storage that grows on its own, with a higher minimum price. A good upgrade once Ledgerline outgrows one instance; more than launch needs.` },
+      { name: 'DynamoDB', why: `A key-value store with no multi-table SQL, no deferred triggers, and no trigram search. The balancing rules and reports would move into application code, which is where ledger bugs come from.` },
+      { name: 'Postgres on EC2', why: `You own backups, failover, and patching. One bad weekend costs more than the RDS premium.` },
+    ],
+    links: [['ecs', 'Accepts connections only from API tasks'], ['secrets', 'Master password managed there'], ['kms', 'Storage and backups encrypted'], ['cloudwatch', 'Reports connections, CPU, free storage']],
+  },
+  elasticache: {
+    name: 'ElastiCache for Valkey', cat: 'data', role: 'Shared tally sheet',
+    what: `Managed in-memory data stores: Valkey, Redis OSS, or Memcached.`,
+    story: `ElastiCache is the shared tally sheet the containers use to count. <code>rate-limit.js</code> keeps its counters in Redis: 300 requests per minute per IP, 5 login attempts per 15 minutes per IP and email, 10 CSV imports per hour per organization, 60 reports per minute per organization. The comment in that file already gives the reason: there can be several API containers behind the load balancer, and an attacker shouldn't get a fresh allowance on each one.`,
+    why: `With two or more containers, memory inside each process gives each one its own count. A shared store makes a limit apply across all of them.`,
+    useCases: [`Rate-limit counters`, `Session and cache storage`, `Leaderboards and lightweight queues`, `Caching slow query results`],
+    ledgerline: `ElastiCache for Valkey, which speaks the same protocol as Redis, so the <code>redis</code> client and <code>rate-limit-redis</code> work unchanged. A small node with one replica in the other zone, automatic failover, and encryption in transit and at rest. The only change is the URL scheme: <code>rediss://</code>.`,
+    pros: [`Sub-millisecond reads and writes`, `Multi-AZ failover`, `No code change`],
+    cons: [`Charged per node hour even when idle`, `Data lives in memory: fine for counters, wrong for records`, `TLS must be on, which means the rediss:// scheme`],
+    alts: [
+      { name: 'MemoryDB', why: `A durable Redis-compatible database. Losing rate-limit counters in a failover is harmless, so paying for durability buys nothing here.` },
+      { name: 'DynamoDB counters', why: `Would work with a different store library and code changes. Valkey keeps rate-limit-redis exactly as it is.` },
+      { name: 'In-memory store per container', why: `Each container counts on its own, so with four containers a user effectively gets four times the login attempts.` },
+    ],
+    links: [['ecs', 'Accepts connections only from API tasks'], ['kms', 'Data encrypted at rest']],
+  },
+  secrets: {
+    name: 'Secrets Manager', cat: 'security', role: 'Locked key cabinet',
+    what: `Encrypted storage for passwords, keys, and connection strings, with access controlled by IAM and optional automatic rotation.`,
+    story: `Secrets Manager is the locked key cabinet. JWT_SECRET, the database password, and the full DATABASE_URL and REDIS_URL live here. When ECS starts a task, its execution role reads the secrets and injects them as environment variables, and <code>env.js</code> validates them with zod exactly as it does on your laptop. No secret sits in the repo, in the image, or in the task definition as plain text.`,
+    why: `<code>env.js</code> refuses to boot without a JWT_SECRET of at least 32 characters and a valid DATABASE_URL. Those values have to reach the container without living in git or in the image.`,
+    useCases: [`Database credentials with automatic rotation`, `Third-party API keys`, `Signing keys such as JWT secrets`],
+    ledgerline: `Secrets for the JWT secret, the RDS-managed master credential, and the full database URL (app user plus <code>sslmode=verify-full</code>). The task definition references them by ARN with <code>valueFrom</code>, so values never show up in the console.`,
+    pros: [`Encrypted with KMS`, `Fine-grained IAM access per secret`, `Native rotation for RDS passwords`],
+    cons: [`Monthly charge per secret plus API calls`, `Rotating JWT_SECRET signs every user out, since all existing tokens stop verifying`, `Tasks read secrets at start, so a changed value needs a redeploy`],
+    alts: [
+      { name: 'SSM Parameter Store (SecureString)', why: `Cheaper and perfectly fine for JWT_SECRET. Secrets Manager wins on RDS password rotation, and keeping every secret in one place is simpler.` },
+      { name: 'Plain environment variables in the task definition', why: `Readable by anyone who can view the task definition, and copied into every revision forever.` },
+      { name: '.env file in the image', why: `Anyone who can pull the image has the keys.` },
+    ],
+    links: [['ecs', 'Injects values when tasks start'], ['kms', 'Encrypts every secret'], ['rds', 'Manages the master password'], ['iam', 'Only the execution role may read them']],
+  },
+  kms: {
+    name: 'KMS', cat: 'security', role: 'Master key behind the locks',
+    what: `Managed encryption keys. Other services ask KMS to encrypt and decrypt, and the key itself never leaves KMS.`,
+    story: `KMS is the master key behind every other lock. RDS storage and backups, Secrets Manager values, ElastiCache data, and S3 objects are all encrypted with keys KMS holds. Ledgerline's code never calls KMS; the services do it on its behalf. What KMS adds is a record, because every decrypt shows up in CloudTrail.`,
+    why: `Financial data at rest should be encrypted, and auditors will ask who could decrypt it. KMS answers both questions.`,
+    useCases: [`Encryption at rest for databases, disks, and buckets`, `Envelope encryption inside your own code`, `Signing and verifying data`],
+    ledgerline: `A customer managed key for RDS and Secrets Manager, so the key policy controls who can decrypt the ledger. AWS managed keys elsewhere. Automatic key rotation on.`,
+    pros: [`Keys never leave the hardware`, `Every use is logged in CloudTrail`, `Integrated with almost every AWS data service`],
+    cons: [`Customer managed keys cost a monthly fee each`, `A wrong key policy can lock you out of your own data`, `RDS encryption is chosen at creation; changing it later means copying a snapshot`],
+    alts: [
+      { name: 'CloudHSM', why: `Single-tenant hardware you operate. Some regulations require it; Ledgerline doesn't need that cost or effort.` },
+      { name: 'Encrypting in the app with your own key', why: `Then that key needs protecting, which leads straight back to KMS.` },
+    ],
+    links: [['rds', 'Encrypts storage and backups'], ['secrets', 'Encrypts secret values'], ['s3', 'Encrypts objects'], ['elasticache', 'Encrypts data at rest']],
+  },
+  cloudwatch: {
+    name: 'CloudWatch', cat: 'ops', role: 'Logbook and alarm bell',
+    what: `Logs, metrics, dashboards, and alarms for everything in the account.`,
+    story: `CloudWatch is the logbook and the alarm bell. Every <code>console.error</code> from the API, already scrubbed by <code>log-redact.js</code>, lands in a log group alongside its X-Request-Id, so a support ticket that includes a request ID leads to one log line. Metrics arrive from the ALB (5xx count, latency), ECS (CPU, memory), and RDS (connections, free storage). Alarms notify someone when the error rate jumps or the database runs low on space.`,
+    why: `Once the app runs on machines you can't log in to, logs and metrics are how you see what it's doing.`,
+    useCases: [`Central application logs`, `Alarms on error rates and latency`, `On-call dashboards`, `Logs Insights queries during an incident`],
+    ledgerline: `Log group <code>/ecs/ledgerline-api</code> with 30-day retention. Alarms on ALB 5xx rate, healthy host count below 2, RDS free storage, RDS CPU, and ECS running count below desired. Alarms notify through SNS to email.`,
+    pros: [`Works with every AWS service from day one`, `Logs Insights handles most debugging`, `Alarms can drive auto scaling`],
+    cons: [`Log ingestion is charged per GB, so noisy logs get expensive`, `The console is clunky next to third-party tools`, `Log retention defaults to forever; set it`],
+    alts: [
+      { name: 'Datadog or New Relic', why: `Better UI and tracing, at per-host and per-GB prices that would exceed Ledgerline's whole infrastructure bill at this size.` },
+      { name: 'Self-hosted Grafana and Loki', why: `One more system to run, upgrade, and keep alive.` },
+      { name: 'OpenSearch', why: `Powerful search, and a cluster to size and pay for around the clock.` },
+    ],
+    links: [['ecs', 'Receives task logs and metrics'], ['alb', 'Receives request metrics'], ['rds', 'Receives database metrics'], ['waf', 'Receives blocked-request metrics']],
+  },
+  iam: {
+    name: 'IAM', cat: 'security', role: 'The rulebook',
+    what: `Identity and Access Management: which people, services, and CI jobs can do what to which AWS resources.`,
+    story: `IAM is the rulebook every other service checks before it acts. The ECS task role grants nothing extra, because the API makes no AWS calls of its own. The execution role can pull from ECR, read the app's secrets, and write logs. GitHub Actions holds no stored keys: it proves who it is with a short-lived OIDC token, and IAM trusts that token only for the main branch of gandib89/Ledgerline. If a role isn't granted something, the call fails, whatever the code asks for.`,
+    why: `In the cloud, every action is an API call, and IAM decides which calls are allowed. Least privilege limits how far a single bug or leaked credential can reach.`,
+    useCases: [`Roles for services so code holds no hardcoded keys`, `Federated login for CI systems through OIDC`, `Permission boundaries per team`],
+    ledgerline: `<code>ecsTaskExecutionRole</code> (pull image, read secrets, write logs). <code>ledgerline-api-task-role</code> (empty for now). <code>github-deploy-role</code> (push to ECR, update the ECS service, run the migration task, sync S3, invalidate CloudFront), trusted only for <code>repo:gandib89/Ledgerline:ref:refs/heads/main</code>. People sign in through IAM Identity Center rather than IAM users.`,
+    pros: [`Free`, `Short-lived credentials everywhere`, `Very fine-grained control`],
+    cons: [`Policy JSON is easy to get wrong`, `Overly broad policies are the most common cloud security mistake`, `Tracking down an AccessDenied can take a while`],
+    alts: [
+      { name: 'Long-lived access keys in GitHub secrets', why: `They never expire, so one leak is a standing breach. OIDC credentials last minutes.` },
+      { name: 'Root account for everything', why: `No limits and no per-person audit trail.` },
+    ],
+    links: [['github', 'Trusts its OIDC token for the deploy role'], ['ecs', 'Task role and execution role'], ['secrets', 'Controls who may read them'], ['ecr', 'Controls push and pull']],
+  },
+  github: {
+    name: 'GitHub Actions', cat: 'delivery', role: 'The delivery truck',
+    what: `The CI pipeline already in <code>.github/workflows/ci.yml</code>, extended with a deploy job that runs after tests pass on main.`,
+    story: `GitHub Actions is the delivery truck. Today it runs lint and tests against real Postgres 16 and Redis 7 service containers. On AWS a deploy job follows: it assumes the deploy role through OIDC, builds and pushes the image to ECR, runs the migration task against RDS, updates the ECS service, uploads the Vite build to S3, and invalidates index.html in CloudFront. If a test fails, nothing ships.`,
+    why: `The repo already lives on GitHub with working CI. A deploy job is a handful of steps; switching CI systems is a migration project.`,
+    useCases: [`Test, build, and deploy on every merge`, `Scheduled jobs`, `Releases with manual approval through environments`],
+    ledgerline: `A <code>deploy</code> job with <code>needs: [backend, frontend]</code> and <code>permissions: id-token: write</code>, bound to a <code>production</code> environment with required reviewers if you want a manual approval gate.`,
+    pros: [`Already in use`, `OIDC to AWS with no stored secrets`, `Large library of ready-made actions`],
+    cons: [`Minutes cost money on private repos past the free tier`, `Deploy logic lives in YAML`, `Third-party actions are a supply-chain risk; pin them by commit SHA`],
+    alts: [
+      { name: 'CodePipeline with CodeBuild', why: `Everything inside AWS, but it means rebuilding CI that already works on GitHub.` },
+      { name: 'Deploying from a laptop', why: `No record of who shipped what, and tests get skipped when someone is in a hurry.` },
+    ],
+    links: [['iam', 'Exchanges an OIDC token for deploy credentials'], ['ecr', 'Pushes images'], ['ecs', 'Runs migrations, rolls the service'], ['s3', 'Uploads the frontend'], ['cloudfront', 'Invalidates index.html']],
+  },
+};
+
+// ---------- Map ----------
+const NODES = [
+  { id: 'user', svc: null, label: `Sita's browser`, sub: 'Pokhara, Nepal', x: 25, y: 330, w: 135, h: 60 },
+  { id: 'gh', svc: 'github', label: 'GitHub Actions', sub: 'CI + deploy', x: 25, y: 650, w: 135, h: 60 },
+  { id: 'r53', svc: 'route53', label: 'Route 53', sub: 'DNS', x: 200, y: 80, w: 160, h: 56 },
+  { id: 'waf', svc: 'waf', label: 'AWS WAF', sub: 'edge firewall', x: 200, y: 205, w: 160, h: 56 },
+  { id: 'cf', svc: 'cloudfront', label: 'CloudFront', sub: 'CDN + path router', x: 200, y: 330, w: 160, h: 60 },
+  { id: 'acm', svc: 'acm', label: 'ACM', sub: 'TLS certificates', x: 200, y: 470, w: 160, h: 56 },
+  { id: 's3', svc: 's3', label: 'S3', sub: 'frontend bucket', x: 420, y: 76, w: 170, h: 56 },
+  { id: 'ecr', svc: 'ecr', label: 'ECR', sub: 'image registry', x: 995, y: 76, w: 180, h: 56 },
+  { id: 'iam', svc: 'iam', label: 'IAM', sub: 'roles + OIDC', x: 995, y: 186, w: 180, h: 56 },
+  { id: 'secrets', svc: 'secrets', label: 'Secrets Manager', sub: 'JWT, DB, Redis URLs', x: 995, y: 296, w: 180, h: 56 },
+  { id: 'kms', svc: 'kms', label: 'KMS', sub: 'encryption keys', x: 995, y: 406, w: 180, h: 56 },
+  { id: 'cw', svc: 'cloudwatch', label: 'CloudWatch', sub: 'logs + alarms', x: 995, y: 516, w: 180, h: 56 },
+  { id: 'natA', svc: 'nat', label: 'NAT', sub: '1a', x: 435, y: 240, w: 115, h: 52 },
+  { id: 'alb', svc: 'alb', label: 'Load Balancer', sub: 'ALB, both zones', x: 585, y: 240, w: 245, h: 52 },
+  { id: 'natB', svc: 'nat', label: 'NAT', sub: '1b', x: 845, y: 240, w: 115, h: 52 },
+  { id: 'ecsA', svc: 'ecs', label: 'Fargate task', sub: 'Express API, 1a', x: 455, y: 365, w: 200, h: 60 },
+  { id: 'ecsB', svc: 'ecs', label: 'Fargate task', sub: 'Express API, 1b', x: 735, y: 365, w: 200, h: 60 },
+  { id: 'rdsA', svc: 'rds', label: 'RDS Postgres 16', sub: 'primary, 1a', x: 455, y: 505, w: 200, h: 60 },
+  { id: 'rdsB', svc: 'rds', label: 'RDS Postgres 16', sub: 'standby, 1b (sync)', x: 735, y: 505, w: 200, h: 60 },
+  { id: 'redisA', svc: 'elasticache', label: 'Valkey', sub: 'primary, 1a', x: 455, y: 630, w: 200, h: 60 },
+  { id: 'redisB', svc: 'elasticache', label: 'Valkey', sub: 'replica, 1b', x: 735, y: 630, w: 200, h: 60 },
+];
+const NODE_CAT = { user: 'ops' };
+const EDGES = [
+  ['user', 'r53'], ['user', 'cf'], ['cf', 'waf'], ['cf', 's3'], ['cf', 'alb'], ['acm', 'cf'],
+  ['alb', 'ecsA'], ['alb', 'ecsB'], ['ecsA', 'rdsA'], ['ecsB', 'rdsA'], ['ecsA', 'redisA'], ['ecsB', 'redisA'],
+  ['rdsA', 'rdsB'], ['redisA', 'redisB'], ['ecsB', 'rdsB'], ['ecsB', 'redisB'],
+  ['ecsA', 'natA'], ['ecsB', 'natB'], ['natB', 'ecr'], ['natB', 'secrets'], ['ecsA', 'cw'], ['ecsB', 'cw'],
+  ['secrets', 'kms'], ['gh', 'iam'], ['gh', 'ecr'], ['gh', 'ecsA'], ['gh', 's3'], ['gh', 'cf'],
+];
+const BOXES = [
+  { cls: 'net', x: 10, y: 40, w: 165, h: 720, label: 'Internet' },
+  { cls: 'edge', x: 185, y: 40, w: 190, h: 520, label: 'AWS edge (global)' },
+  { cls: 'region', x: 390, y: 40, w: 800, h: 720, label: 'Region ap-south-1 (Mumbai)' },
+  { cls: 'vpc', x: 405, y: 158, w: 575, h: 592, label: 'VPC 10.0.0.0/16  (click)' },
+  { cls: 'net', x: 418, y: 222, w: 552, h: 88, label: '' },
+  { cls: 'net', x: 418, y: 345, w: 552, h: 100, label: '' },
+  { cls: 'net', x: 418, y: 485, w: 552, h: 225, label: '' },
+  { cls: 'az', x: 420, y: 190, w: 270, h: 550, label: 'ap-south-1a' },
+  { cls: 'az', x: 700, y: 190, w: 270, h: 550, label: 'ap-south-1b' },
+];
+const BANDS = [['public subnets', 304], ['private app subnets', 439], ['private data subnets', 727]];
+
+const SCENARIOS = {
+  open: { name: 'Open the app', steps: [
+    { e: [['user', 'r53']], n: ['user', 'r53'], t: `The browser asks Route 53 where app.ledgerline.com lives. Route 53 answers with an alias to the CloudFront distribution.` },
+    { e: [['user', 'cf']], n: ['user', 'cf', 'acm'], t: `The browser opens HTTPS to the nearest CloudFront edge. CloudFront presents the ACM certificate, which is stored in us-east-1.` },
+    { e: [['cf', 'waf']], n: ['cf', 'waf'], t: `WAF checks the request against its managed rules. Nothing suspicious, so it passes.` },
+    { e: [['cf', 's3']], n: ['cf', 's3'], t: `Cache miss for index.html. CloudFront fetches it from the private S3 bucket, signing the request with Origin Access Control.` },
+    { e: [['cf', 'user']], n: ['cf', 'user'], t: `CloudFront returns the files and keeps the hashed JS bundle cached at the edge for the next visitor. No container and no database were involved.` },
+  ]},
+  login: { name: 'Log in', steps: [
+    { e: [['user', 'cf']], n: ['user', 'cf'], t: `POST /api/v1/auth/login goes to app.ledgerline.com, the same origin as the page, so there's no CORS preflight.` },
+    { e: [['cf', 'waf']], n: ['cf', 'waf'], t: `WAF's rate-based rule counts requests to /api/v1/auth/* per IP. This one is far under the limit.` },
+    { e: [['cf', 'alb']], n: ['cf', 'alb'], t: `The /api/* behavior sends it to the ALB origin in Mumbai with caching disabled. Cookies and the Authorization header are forwarded.` },
+    { e: [['alb', 'ecsA']], n: ['alb', 'ecsA'], t: `The ALB picks a healthy target: the task in ap-south-1a.` },
+    { e: [['ecsA', 'redisA']], n: ['ecsA', 'redisA'], t: `authLimiter increments the counter for this IP and email in Valkey. Attempt 1 of 5 allowed per 15 minutes.` },
+    { e: [['ecsA', 'rdsA']], n: ['ecsA', 'rdsA'], t: `Prisma loads the user, argon2 verifies the password, and a new refresh token row is written.` },
+    { e: [['ecsA', 'cw']], n: ['ecsA', 'cw'], t: `The log line for this request, tagged with its X-Request-Id and redacted, goes to CloudWatch Logs.` },
+    { e: [['ecsA', 'alb'], ['alb', 'cf'], ['cf', 'user']], n: ['ecsA', 'alb', 'cf', 'user'], t: `The response travels back: access token in the body, refresh token in an HttpOnly, Secure, SameSite=Strict cookie scoped to /api/v1/auth.` },
+  ]},
+  csv: { name: 'Import bank CSV', steps: [
+    { e: [['user', 'cf'], ['cf', 'alb']], n: ['user', 'cf', 'alb'], t: `Sita uploads last month's statement: a multipart POST to /api/v1/bank-accounts/:id/statements.` },
+    { e: [['alb', 'ecsB']], n: ['alb', 'ecsB'], t: `This time the ALB picks the task in ap-south-1b. Any task can serve any request because none of them keeps state between requests.` },
+    { e: [['ecsB', 'redisA']], n: ['ecsB', 'redisA'], t: `csvImportLimiter checks the count of imports this hour for her organization (limit 10). The counter is shared, so both tasks see the same number.` },
+    { e: [['ecsB', 'rdsA']], n: ['ecsB', 'rdsA'], t: `multer holds the file in memory (2 MB cap). The parser writes the statement and its lines to Postgres in one transaction.` },
+    { e: [['ecsB', 'rdsA']], n: ['ecsB', 'rdsA'], t: `The matching engine runs a pg_trgm similarity query against party names to suggest which invoice or receipt each line belongs to.` },
+    { e: [['ecsB', 'alb'], ['alb', 'cf'], ['cf', 'user']], n: ['ecsB', 'alb', 'cf', 'user'], t: `Suggested matches come back to the reconciliation screen.` },
+  ]},
+  deploy: { name: 'Ship a release', steps: [
+    { e: [], n: ['gh'], t: `A pull request merges into main. The existing CI jobs run lint and tests against Postgres 16 and Redis 7. The deploy job waits for both to pass.` },
+    { e: [['gh', 'iam']], n: ['gh', 'iam'], t: `The deploy job trades a GitHub OIDC token for temporary credentials on github-deploy-role. There are no stored AWS keys.` },
+    { e: [['gh', 'ecr']], n: ['gh', 'ecr'], t: `docker build, then push ledgerline-api:<commit-sha>. Tags are immutable.` },
+    { e: [['gh', 'ecsA'], ['ecsA', 'rdsA']], n: ['gh', 'ecsA', 'rdsA'], t: `A one-off Fargate task runs npx prisma migrate deploy against RDS before any new code takes traffic.` },
+    { e: [['ecsB', 'natB'], ['natB', 'ecr'], ['natB', 'secrets']], n: ['ecsB', 'natB', 'ecr', 'secrets'], t: `ECS starts new tasks beside the old ones. Each pulls the image and receives its secrets at start.` },
+    { e: [['alb', 'ecsA'], ['alb', 'ecsB']], n: ['alb', 'ecsA', 'ecsB'], t: `The ALB health-checks /healthz on the new tasks. Once they're healthy, old tasks get 30 seconds to finish in-flight requests, then SIGTERM.` },
+    { e: [['gh', 's3'], ['gh', 'cf']], n: ['gh', 's3', 'cf'], t: `The Vite build syncs to S3, then CloudFront invalidates /index.html so browsers pick up the new bundle. Nobody was logged out.` },
+  ]},
+  az: { name: 'A zone fails', steps: [
+    { e: [], n: [], down: ['natA', 'ecsA', 'rdsA', 'redisA'], t: `ap-south-1a loses power. The task, the RDS primary, the Valkey primary, and the NAT gateway in 1a stop responding.` },
+    { e: [['alb', 'ecsB']], n: ['alb', 'ecsB'], t: `Health checks to the 1a task fail, so the ALB sends all traffic to the 1b task.` },
+    { e: [['rdsA', 'rdsB']], n: ['rdsB'], relabel: { rdsB: 'PRIMARY now (promoted)' }, t: `RDS promotes the synchronous standby in 1b and points the database endpoint at it, typically within one to two minutes. Open transactions roll back; committed ones are already on the standby.` },
+    { e: [['redisA', 'redisB']], n: ['redisB'], relabel: { redisB: 'PRIMARY now (promoted)' }, t: `Valkey promotes its replica. A few rate-limit counters may reset, which is harmless.` },
+    { e: [['ecsB', 'rdsB'], ['ecsB', 'redisB']], n: ['ecsB', 'rdsB', 'redisB'], t: `The API reconnects to the same endpoint names, which now resolve to 1b.` },
+    { e: [['ecsB', 'natB'], ['natB', 'ecr']], n: ['ecsB', 'natB', 'ecr'], t: `ECS sees one task instead of the desired two and launches a replacement in 1b, pulling the image through 1b's own NAT gateway.` },
+  ]},
+  attack: { name: 'Login bot attack', steps: [
+    { e: [['user', 'cf']], n: ['user', 'cf'], relabel: { user: 'credential-stuffing bot' }, t: `A bot starts firing thousands of login attempts a minute from one IP.` },
+    { e: [['cf', 'waf']], n: ['cf', 'waf'], t: `WAF's rate-based rule trips for that IP. Further requests get a 403 at the edge and never reach Mumbai.` },
+    { e: [['cf', 'alb'], ['alb', 'ecsA']], n: ['cf', 'alb', 'ecsA'], t: `Requests that stay under WAF's threshold still reach the API.` },
+    { e: [['ecsA', 'redisA']], n: ['ecsA', 'redisA'], t: `authLimiter allows 5 attempts per IP and email every 15 minutes, then answers 429. This only works if req.ip is the real client IP, which is what app.set('trust proxy', 2) is for.` },
+    { e: [], n: ['rdsA', 'rdsB'], t: `The database never sees the flood. It has no public address, and its security group only accepts connections from the API tasks.` },
+  ]},
+};
+
+const NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('map');
+function mk(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const nodeById = Object.fromEntries(NODES.map(n => [n.id, n]));
+const catOf = n => n.svc ? SERVICES[n.svc].cat : NODE_CAT[n.id];
+
+const boxLayer = mk('g', {}, svg);
+BOXES.forEach(b => {
+  const g = mk('g', { class: 'box ' + b.cls }, boxLayer);
+  mk('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 12 }, g);
+  if (b.label) {
+    const t = mk('text', { x: b.x + 12, y: b.y + 18 }, g);
+    t.textContent = b.label;
+    if (b.cls === 'vpc') t.addEventListener('click', () => openService('vpc'));
+  }
+});
+BANDS.forEach(([label, y]) => {
+  const t = mk('text', { x: 960, y, 'text-anchor': 'end', class: 'bandlabel', 'font-size': 10.5, fill: 'var(--muted)', 'font-style': 'italic' }, boxLayer);
+  t.textContent = label;
+});
+
+function center(n) { return { x: n.x + n.w / 2, y: n.y + n.h / 2 }; }
+function clip(n, toward) {
+  const c = center(n), dx = toward.x - c.x, dy = toward.y - c.y;
+  const t = Math.min((n.w / 2 + 3) / Math.abs(dx || 1e-6), (n.h / 2 + 3) / Math.abs(dy || 1e-6));
+  return { x: c.x + dx * Math.min(t, 1), y: c.y + dy * Math.min(t, 1) };
+}
+const edgeLayer = mk('g', {}, svg);
+const edgeEls = {};
+EDGES.forEach(([a, b]) => {
+  const A = nodeById[a], B = nodeById[b];
+  const p1 = clip(A, center(B)), p2 = clip(B, center(A));
+  edgeEls[a + '>' + b] = mk('path', { d: `M${p1.x},${p1.y} L${p2.x},${p2.y}`, class: 'edgeline' }, edgeLayer);
+});
+function getEdge(a, b) {
+  if (edgeEls[a + '>' + b]) return { el: edgeEls[a + '>' + b], rev: false };
+  if (edgeEls[b + '>' + a]) return { el: edgeEls[b + '>' + a], rev: true };
+  return null;
+}
+
+const nodeLayer = mk('g', {}, svg);
+const nodeEls = {};
+NODES.forEach(n => {
+  const g = mk('g', { class: 'node', tabindex: 0, role: 'button', 'aria-label': n.label + ', ' + n.sub }, nodeLayer);
+  mk('rect', { class: 'body', x: n.x, y: n.y, width: n.w, height: n.h, rx: 10 }, g);
+  mk('rect', { x: n.x, y: n.y + 8, width: 4, height: n.h - 16, rx: 2, fill: CATS[catOf(n)].color }, g);
+  const l = mk('text', { class: 'label', x: n.x + 14, y: n.y + n.h / 2 - 3 }, g); l.textContent = n.label;
+  const s = mk('text', { class: 'sublabel', x: n.x + 14, y: n.y + n.h / 2 + 14 }, g); s.textContent = n.sub;
+  nodeEls[n.id] = { g, sub: s };
+  const open = () => n.svc ? openService(n.svc) : setCaption('', `This is the user. Everything on the map exists to serve requests from this browser.`);
+  g.addEventListener('click', open);
+  g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  g.addEventListener('mouseenter', () => EDGES.forEach(([a, b]) => { if (a === n.id || b === n.id) edgeEls[a + '>' + b].classList.add('hl'); }));
+  g.addEventListener('mouseleave', () => Object.values(edgeEls).forEach(e => e.classList.remove('hl')));
+});
+const packetLayer = mk('g', {}, svg);
+
+// ---------- Scenario player ----------
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const state = { key: null, i: -1, playing: false, token: 0 };
+const capStep = document.getElementById('capStep'), capText = document.getElementById('capText');
+const playBtn = document.getElementById('playBtn');
+function setCaption(step, text) { capStep.textContent = step || 'Info'; capText.textContent = text; }
+
+function animateAlong(path, rev, dur, token) {
+  return new Promise(res => {
+    if (reduceMotion) return setTimeout(res, 250);
+    const len = path.getTotalLength();
+    const dot = mk('circle', { r: 6, class: 'packet' }, packetLayer);
+    const t0 = performance.now();
+    function frame(t) {
+      if (token !== state.token) { dot.remove(); return res(); }
+      const p = Math.min(1, (t - t0) / dur);
+      const pt = path.getPointAtLength((rev ? 1 - p : p) * len);
+      dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
+      if (p < 1) requestAnimationFrame(frame); else { dot.remove(); res(); }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+function clearMap() {
+  Object.values(nodeEls).forEach(({ g }) => g.classList.remove('active', 'down', 'changed'));
+  Object.values(edgeEls).forEach(e => e.classList.remove('active'));
+  NODES.forEach(n => { nodeEls[n.id].sub.textContent = n.sub; });
+  packetLayer.innerHTML = '';
+}
+async function showStep(i) {
+  const sc = SCENARIOS[state.key];
+  state.i = i;
+  const token = ++state.token;
+  clearMap();
+  // down/relabel effects accumulate across steps
+  for (let k = 0; k <= i; k++) {
+    (sc.steps[k].down || []).forEach(id => nodeEls[id].g.classList.add('down'));
+    Object.entries(sc.steps[k].relabel || {}).forEach(([id, txt]) => { nodeEls[id].sub.textContent = txt; nodeEls[id].g.classList.add('changed'); });
+  }
+  const st = sc.steps[i];
+  st.n.forEach(id => nodeEls[id].g.classList.add('active'));
+  st.e.forEach(([a, b]) => { const ed = getEdge(a, b); if (ed) ed.el.classList.add('active'); });
+  setCaption(`${sc.name}: step ${i + 1} of ${sc.steps.length}`, st.t);
+  document.getElementById('prevBtn').disabled = i === 0;
+  document.getElementById('nextBtn').disabled = i === sc.steps.length - 1;
+  for (const [a, b] of st.e) {
+    const ed = getEdge(a, b);
+    if (ed) await animateAlong(ed.el, ed.rev, 900, token);
+    if (token !== state.token) return;
+  }
+  if (state.playing) {
+    await new Promise(r => setTimeout(r, 2200));
+    if (token !== state.token || !state.playing) return;
+    if (i < sc.steps.length - 1) showStep(i + 1); else { state.playing = false; playBtn.textContent = 'Replay'; }
+  }
+}
+function startScenario(key, autoplay = true) {
+  state.key = key;
+  document.querySelectorAll('#scenarioBtns button').forEach(b => b.classList.toggle('on', b.dataset.key === key));
+  state.playing = autoplay;
+  playBtn.textContent = autoplay ? 'Pause' : 'Play';
+  showStep(0);
+}
+const scBtns = document.getElementById('scenarioBtns');
+Object.entries(SCENARIOS).forEach(([key, sc]) => {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = sc.name; b.dataset.key = key;
+  b.addEventListener('click', () => startScenario(key));
+  scBtns.appendChild(b);
+});
+playBtn.addEventListener('click', () => {
+  if (!state.key) return startScenario('open');
+  const sc = SCENARIOS[state.key];
+  if (state.playing) { state.playing = false; state.token++; playBtn.textContent = 'Play'; return; }
+  state.playing = true; playBtn.textContent = 'Pause';
+  showStep(state.i >= sc.steps.length - 1 ? 0 : state.i + (state.i < 0 ? 1 : 0));
+});
+document.getElementById('nextBtn').addEventListener('click', () => {
+  if (!state.key) return startScenario('open', false);
+  state.playing = false; playBtn.textContent = 'Play';
+  if (state.i < SCENARIOS[state.key].steps.length - 1) showStep(state.i + 1);
+});
+document.getElementById('prevBtn').addEventListener('click', () => {
+  if (!state.key || state.i <= 0) return;
+  state.playing = false; playBtn.textContent = 'Play'; showStep(state.i - 1);
+});
+document.getElementById('resetBtn').addEventListener('click', () => {
+  state.token++; state.playing = false; state.key = null; state.i = -1; clearMap();
+  playBtn.textContent = 'Play';
+  document.querySelectorAll('#scenarioBtns button').forEach(b => b.classList.remove('on'));
+  setCaption('Pick a scenario', 'Or click any service box to learn what it does.');
+});
+
+document.getElementById('legend').innerHTML = Object.values(CATS).map(c => `<span><i class="dot" style="background:${c.color}"></i>${c.name}</span>`).join('') + `<span>Dashed blue line: the active step</span>`;
+
+// ---------- Drawer ----------
+const drawer = document.getElementById('drawer'), backdrop = document.getElementById('backdrop');
+const TABS = [['story', 'Its part in the story'], ['why', 'Why it exists'], ['uses', 'Use cases'], ['pc', 'Pros and cons'], ['alts', 'Alternatives'], ['links', 'Talks to']];
+let current = null, lastFocus = null;
+function chipHTML(key) {
+  const s = SERVICES[key];
+  return `<button type="button" class="chip" data-svc="${key}"><i class="dot" style="background:${CATS[s.cat].color}"></i>${s.name}</button>`;
+}
+function renderTab(tab) {
+  const s = SERVICES[current];
+  const body = document.getElementById('dBody');
+  document.querySelectorAll('#dTabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === tab); b.setAttribute('aria-selected', b.dataset.tab === tab); });
+  const li = a => '<ul>' + a.map(x => `<li>${x}</li>`).join('') + '</ul>';
+  if (tab === 'story') body.innerHTML = `<p>${s.story}</p><h4>How Ledgerline would set it up</h4><div class="cfg">${s.ledgerline}</div>`;
+  if (tab === 'why') body.innerHTML = `<p>${s.why}</p>`;
+  if (tab === 'uses') body.innerHTML = `<p>Where teams reach for ${s.name} in general:</p>${li(s.useCases)}`;
+  if (tab === 'pc') body.innerHTML = `<div class="pc"><div class="pro"><h5>Pros</h5>${li(s.pros)}</div><div class="con"><h5>Cons</h5>${li(s.cons)}</div></div>`;
+  if (tab === 'alts') body.innerHTML = `<p>Services that do a similar job, and why each one loses for Ledgerline. Tap to expand.</p>` + s.alts.map(a => `<details class="alt"><summary>${a.name}</summary><p>${a.why}</p></details>`).join('');
+  if (tab === 'links') body.innerHTML = `<p>How ${s.name} interacts with the rest of the system. Tap one to jump to it.</p><div class="links">` + s.links.map(([k, how]) => `<button type="button" class="link" data-svc="${k}"><i class="dot" style="background:${CATS[SERVICES[k].cat].color};margin-top:7px"></i><b>${SERVICES[k].name}</b><span>${how}</span></button>`).join('') + '</div>';
+}
+function openService(key, tab = 'story') {
+  current = key;
+  const s = SERVICES[key];
+  if (!drawer.classList.contains('open')) lastFocus = document.activeElement;
+  drawer.style.setProperty('--cat', CATS[s.cat].color);
+  document.getElementById('dCat').textContent = CATS[s.cat].name + ' · ' + s.role;
+  document.getElementById('dTitle').textContent = s.name;
+  document.getElementById('dWhat').innerHTML = s.what;
+  document.getElementById('dTabs').innerHTML = TABS.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}">${l}</button>`).join('');
+  renderTab(tab);
+  drawer.classList.add('open'); backdrop.classList.add('open'); drawer.setAttribute('aria-hidden', 'false');
+  document.getElementById('dClose').focus();
+}
+function closeDrawer() {
+  drawer.classList.remove('open'); backdrop.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true');
+  if (lastFocus) lastFocus.focus();
+}
+document.getElementById('dTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) renderTab(b.dataset.tab); });
+document.getElementById('dClose').addEventListener('click', closeDrawer);
+backdrop.addEventListener('click', closeDrawer);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer(); });
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-svc]');
+  if (b) openService(b.dataset.svc);
+});
+
+// ---------- Services grid ----------
+const grid = document.getElementById('svcGrid'), filters = document.getElementById('filters');
+let filter = 'all';
+function renderGrid() {
+  grid.innerHTML = Object.entries(SERVICES).filter(([, s]) => filter === 'all' || s.cat === filter).map(([k, s]) =>
+    `<button type="button" class="svc" data-svc="${k}" style="--cat:${CATS[s.cat].color}"><div class="cat">${CATS[s.cat].name}</div><h4>${s.name}</h4><p>${s.what}</p><div class="role">${s.role}</div></button>`).join('');
+}
+filters.innerHTML = `<button type="button" class="on" data-f="all">All</button>` + Object.entries(CATS).map(([k, c]) => `<button type="button" data-f="${k}"><i class="dot" style="background:${c.color}"></i>${c.name}</button>`).join('');
+filters.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  filter = b.dataset.f; filters.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); renderGrid();
+});
+renderGrid();
+
+// ---------- Story ----------
+const MAPPING = [
+  { from: 'vite dev server :5173', to: 'S3 + CloudFront', why: `After <code>vite build</code> the React app is a folder of static files. S3 stores them; CloudFront serves them from an edge near the user and routes /api/* to the backend.` },
+  { from: 'node --watch src/index.js', to: 'ECS Fargate behind an ALB', why: `The same Express process, packaged as a Docker image. Two copies run in two zones, and the ALB spreads requests and skips unhealthy ones.` },
+  { from: 'postgres:16 (docker-compose)', to: 'RDS for PostgreSQL 16, Multi-AZ', why: `Same engine and version, so every migration, trigger, and pg_trgm query runs unchanged. AWS takes over backups, patching, and failover.` },
+  { from: 'redis:7 (docker-compose)', to: 'ElastiCache for Valkey', why: `Shared rate-limit counters for every API task. Valkey speaks the Redis protocol, so rate-limit.js keeps working.` },
+  { from: 'backend/.env', to: 'Secrets Manager + KMS', why: `JWT_SECRET and the connection strings are injected into each task at start. env.js validates them exactly as it does now.` },
+  { from: 'console.log in a terminal', to: 'CloudWatch Logs + alarms', why: `Every task's output lands in one log group, searchable by X-Request-Id, with alarms on error spikes.` },
+  { from: 'localhost', to: 'Route 53 + ACM', why: `A real domain with HTTPS. Route 53 answers DNS queries; ACM issues and renews the certificate.` },
+  { from: 'git push + CI tests', to: 'GitHub Actions deploy + ECR + IAM', why: `CI already tests every push. A deploy job after it builds the image, stores it in ECR, and rolls it out with short-lived credentials.` },
+  { from: 'your laptop firewall', to: 'VPC, subnets, security groups, NAT', why: `Private subnets keep the database and containers off the internet. Security groups allow only the connections the app needs.` },
+  { from: 'express-rate-limit alone', to: 'AWS WAF in front of it', why: `A first filter for abusive traffic before it costs a container any work. The app's own limiter stays as the second line.` },
+];
+
+const CHAPTERS = [
+  { time: 'Before day one', title: 'From one laptop to one region', svcs: [], scenario: null, html: `
+    <p>Right now Ledgerline lives on one machine. Vite serves the React app on port 5173, Express answers on 3000, and docker-compose runs Postgres 16 and Redis 7 next to them. That's fine for one developer. It stops being fine the day an accounting firm signs up, because a laptop sleeps, has one disk, and sits behind a home router.</p>
+    <p>Moving to AWS doesn't change what Ledgerline is. It's the same Express app, the same Prisma migrations, the same React build. What changes is who runs each piece and how the pieces find each other. Everything regional goes in ap-south-1 (Mumbai), the AWS region closest to Nepal, which keeps API round trips short for firms in Kathmandu and Pokhara.</p>
+    <p>Each thing you run locally gets a managed counterpart. Tap a card to see where it goes and why.</p>
+    <div class="mapping">${MAPPING.map(m => `<button type="button" class="flip"><div class="from">${m.from}</div><div class="to">${m.to}</div><div class="why">${m.why}</div><div class="hint">tap to see why</div></button>`).join('')}</div>` },
+  { time: '9:02 am', title: 'Sita opens the app', svcs: ['route53', 'cloudfront', 'acm', 'waf', 's3'], scenario: 'open', html: `
+    <p>Sita keeps the books for a hardware wholesaler in Pokhara. She types app.ledgerline.com.</p>
+    <p>Her browser first asks Route 53 where that name lives and gets back the address of a nearby CloudFront edge. It opens an HTTPS connection to that edge, and the padlock appears because CloudFront presents the ACM certificate for app.ledgerline.com.</p>
+    <p>WAF looks the request over and lets it through. CloudFront checks its cache for index.html. If someone nearby loaded the app recently, the file is already there. If not, CloudFront fetches it from the private S3 bucket in Mumbai, signing the request with Origin Access Control so the bucket knows CloudFront is asking. The JavaScript bundle follows the same route.</p>
+    <p>Nothing in this chapter touched a container or the database. Loading the app costs almost nothing, which is the point of putting static files at the edge.</p>` },
+  { time: '9:03 am', title: 'She logs in', svcs: ['cloudfront', 'waf', 'alb', 'ecs', 'elasticache', 'rds', 'cloudwatch'], scenario: 'login', html: `
+    <p>The login form posts to <code>/api/v1/auth/login</code>. It's the same domain as the page, so the browser treats it as same-origin and sends cookies normally.</p>
+    <p>CloudFront sees the <code>/api/*</code> path and sends the request to a different origin: the Application Load Balancer in Mumbai, over HTTPS, with caching turned off. The ALB picks a healthy Fargate task, say the one in ap-south-1a.</p>
+    <p>Inside the task, Express runs the same middleware it runs on your laptop. The auth limiter asks Valkey how many attempts this IP and email have made in the last 15 minutes. Fewer than five, so it continues. Prisma loads the user from RDS, argon2 checks the password, and a new refresh token row is written.</p>
+    <p>The response carries an access token in the body and the refresh token in a cookie marked HttpOnly, Secure, and SameSite=Strict. That cookie only works because the SPA and the API share one origin, which is the main reason CloudFront does the routing. On the way out, the request's log line, tagged with its X-Request-Id and scrubbed by <code>log-redact.js</code>, goes to CloudWatch.</p>` },
+  { time: '10:15 am', title: 'The bank statement arrives', svcs: ['alb', 'ecs', 'elasticache', 'rds'], scenario: 'csv', html: `
+    <p>Sita downloads last month's statement from her bank as a CSV and uploads it on the Banking page. It's a multipart request, capped at 2 MB by multer, and it lands on whichever task the ALB picks. This time that's the one in 1b.</p>
+    <p>The CSV import limiter checks Valkey: 10 imports per hour per organization. The task parses the file in memory, never touching disk, and writes the statement and its lines to Postgres inside one transaction. Then the matching engine asks Postgres to score each line against open invoices and receipts, using pg_trgm similarity on party names.</p>
+    <p>That trigram function is a Postgres extension, and it's one reason Ledgerline needs a real Postgres rather than a key-value database. Both tasks talk to the same primary database and the same Valkey primary, so it makes no difference which one served her.</p>` },
+  { time: '2:40 pm', title: 'A new release ships', svcs: ['github', 'iam', 'ecr', 'ecs', 'rds', 'alb', 's3', 'cloudfront'], scenario: 'deploy', html: `
+    <p>A developer merges a pull request into main. The existing CI workflow runs lint and the full test suite against Postgres 16 and Redis 7, the same versions production uses. The deploy job starts only if both pass.</p>
+    <p>The deploy job holds no AWS keys. It asks GitHub for a short-lived OIDC token and trades it with IAM for temporary credentials on a role that trusts only the main branch of this repo. It builds the backend image and pushes it to ECR, tagged with the commit SHA. It runs <code>prisma migrate deploy</code> as a one-off Fargate task, so the schema is ready before the new code needs it. Then it tells ECS to roll the service onto the new image.</p>
+    <p>ECS starts new tasks next to the old ones. Each pulls the image, receives its secrets, and starts answering <code>/healthz</code>. Once the ALB marks them healthy, it drains the old tasks: no new requests, 30 seconds for the ones in flight, then SIGTERM. Last, the job uploads the new frontend to S3 and invalidates index.html in CloudFront.</p>
+    <p>Sita refreshes and gets the new version without being logged out. For about a minute, old and new code ran side by side against the new schema, which is why migrations have to stay backward compatible.</p>` },
+  { time: '3:10 pm', title: 'One building goes dark', svcs: ['alb', 'ecs', 'rds', 'elasticache', 'nat'], scenario: 'az', html: `
+    <p>Availability Zones rarely fail, but they do. Suppose ap-south-1a loses power.</p>
+    <p>The ALB's health checks to the 1a task start failing, and within seconds it sends everything to the 1b task. ECS notices it's below its desired count of two and starts a replacement in 1b.</p>
+    <p>The RDS primary was in 1a. RDS promotes the synchronous standby in 1b and moves the database's DNS name to it, which AWS says typically takes one to two minutes. Any transaction that was open on the old primary is gone. For a ledger that sounds alarming, but it's exactly what transactions are for: a journal entry was either committed, and is already on the standby because replication is synchronous, or it never existed. The deferred trigger that checks debits against credits ran at commit time in both cases, so a half-posted entry can't survive.</p>
+    <p>Valkey promotes its replica in 1b as well. A few rate-limit counters may reset, which costs nothing. Sita sees a couple of failed requests and retries, and then everything works again.</p>` },
+  { time: 'All day', title: 'The rules nobody sees', svcs: ['vpc', 'iam', 'kms', 'secrets', 'waf'], scenario: 'attack', html: `
+    <p>Under all of this sit three quiet layers.</p>
+    <p>The VPC and its security groups decide which machine may open a connection to which. The database has no public address and accepts port 5432 only from the API's security group, so even a leaked database password is useless from the internet.</p>
+    <p>IAM decides which AWS calls each identity may make. The API's execution role can read its own secrets and nothing else. The deploy role can push images and update one service. KMS holds the keys that encrypt the database, its backups, and the secrets, and every decrypt leaves a record in CloudTrail.</p>
+    <p>None of these show up in a request trace, and all of them have to be right. The scenario for this chapter shows what happens when a bot attacks the login page.</p>` },
+];
+const chapterNav = document.getElementById('chapterNav'), chapterEl = document.getElementById('chapter');
+let chap = 0;
+function renderChapter(i) {
+  chap = i;
+  const c = CHAPTERS[i];
+  chapterNav.querySelectorAll('button').forEach((b, k) => { b.classList.toggle('on', k === i); b.setAttribute('aria-selected', k === i); });
+  chapterEl.innerHTML = `<div class="time">${c.time}</div><h3>${c.title}</h3>${c.html}
+    ${c.svcs.length ? `<div class="chips">${c.svcs.map(chipHTML).join('')}</div>` : ''}
+    <div class="chapter-actions">
+      <button type="button" class="btn" id="chPrev" ${i === 0 ? 'disabled' : ''}>Previous</button>
+      <button type="button" class="btn" id="chNext" ${i === CHAPTERS.length - 1 ? 'disabled' : ''}>Next chapter</button>
+      ${c.scenario ? `<button type="button" class="btn primary" id="chPlay">Play on the map</button>` : ''}
+    </div>`;
+  chapterEl.querySelectorAll('.flip').forEach(f => f.addEventListener('click', () => f.classList.toggle('open')));
+  document.getElementById('chPrev').onclick = () => renderChapter(i - 1);
+  document.getElementById('chNext').onclick = () => renderChapter(i + 1);
+  if (c.scenario) document.getElementById('chPlay').onclick = () => {
+    document.getElementById('map-section').scrollIntoView();
+    startScenario(c.scenario);
+  };
+}
+CHAPTERS.forEach((c, i) => {
+  const b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'tab');
+  b.innerHTML = `<span class="n">${String(i + 1).padStart(2, '0')}</span><span>${c.title}</span>`;
+  b.addEventListener('click', () => renderChapter(i));
+  chapterNav.appendChild(b);
+});
+renderChapter(0);
+
+// ---------- Environments ----------
+const ENV = [
+  ['ECS tasks', '2 to 6, auto scaled on CPU, one per zone minimum', '1 task, no auto scaling'],
+  ['RDS Postgres 16', 'Multi-AZ, 14-day backups, deletion protection', 'Single-AZ, smaller instance, 1-day backups'],
+  ['ElastiCache Valkey', 'Primary plus replica, automatic failover', 'One node'],
+  ['NAT gateways', 'One per zone', 'One shared'],
+  ['WAF', 'Rules in block mode', 'Rules in count mode, to tune them'],
+  ['CloudFront + S3', 'Same as staging', 'Same as production, separate bucket and distribution'],
+  ['Alarms', 'Email plus on-call paging', 'Email only'],
+  ['Deploys', 'After tests pass on main, optional manual approval', 'Every merge, automatically'],
+];
+let envSel = 'prod';
+function renderEnv() {
+  const col = envSel === 'prod' ? 1 : 2;
+  document.getElementById('envTable').innerHTML = `<tr><th>Part</th><th>${envSel === 'prod' ? 'Production' : 'Staging'}</th><th>Reason</th></tr>` +
+    ENV.map(r => `<tr><td>${r[0]}</td><td>${r[col]}</td><td style="color:var(--ink-2)">${envSel === 'prod' ? REASONS_PROD[r[0]] : REASONS_STG[r[0]]}</td></tr>`).join('');
+}
+const REASONS_PROD = {
+  'ECS tasks': 'Survives a task crash or a zone loss; absorbs month-end load',
+  'RDS Postgres 16': 'The ledger is the one thing you cannot lose',
+  'ElastiCache Valkey': 'Rate limits keep working through a zone failure',
+  'NAT gateways': 'A zone outage does not block image pulls in the other zone',
+  'WAF': 'Tuned rules can safely block',
+  'CloudFront + S3': 'Already cheap and highly available',
+  'Alarms': 'Someone has to wake up when 5xx errors spike',
+  'Deploys': 'A human can hold a release during a firm\'s closing week',
+};
+const REASONS_STG = {
+  'ECS tasks': 'Nobody depends on staging uptime',
+  'RDS Postgres 16': 'Test data can be reseeded with npm run seed:demo',
+  'ElastiCache Valkey': 'Counters are disposable',
+  'NAT gateways': 'Saves the hourly cost of a second gateway',
+  'WAF': 'Watch what would be blocked before turning it on in production',
+  'CloudFront + S3': 'Keeps staging behaving like production at the edge',
+  'Alarms': 'Signal without the pager',
+  'Deploys': 'Fast feedback on every change',
+};
+document.querySelectorAll('.toggle button').forEach(b => b.addEventListener('click', () => {
+  envSel = b.dataset.env; document.querySelectorAll('.toggle button').forEach(x => x.classList.toggle('on', x === b)); renderEnv();
+}));
+renderEnv();
+
+// ---------- Quiz ----------
+const QUIZ = [
+  { q: 'Why does /api/* go through CloudFront instead of a separate api.ledgerline.com?', o: ['CloudFront caches API responses to make them faster', 'One origin keeps the SameSite=Strict refresh cookie working and avoids CORS', 'The ALB cannot have a public DNS name', 'WAF only works with S3'], a: 1, x: `The refresh cookie is SameSite=Strict with path /api/v1/auth. A separate API domain would make every call cross-site, so the cookie would stop being sent. Caching is disabled on /api/*.` },
+  { q: 'A bot sends 50,000 login attempts from one IP. Which layer stops most of them first?', o: ['The authLimiter in Express', 'Postgres connection limits', 'AWS WAF at the CloudFront edge', 'The NAT gateway'], a: 2, x: `WAF's rate-based rule blocks the IP at the edge, before requests reach the ALB. The Express limiter catches whatever slips under WAF's threshold.` },
+  { q: 'Why can\'t the rate-limit counters live in each container\'s memory?', o: ['Node cannot store counters', 'Each container would count separately, multiplying the allowance by the number of tasks', 'Memory is slower than Valkey', 'ECS wipes memory every minute'], a: 1, x: `With four tasks behind the ALB, an attacker would get five attempts on each, twenty in total. A shared store makes the limit global.` },
+  { q: 'The RDS primary dies mid-way through posting a journal entry. What happens to that entry?', o: ['Half of its lines are saved', 'It rolls back entirely; committed entries are already on the synchronous standby', 'It is saved to Valkey until RDS recovers', 'CloudFront retries it automatically'], a: 1, x: `Posting runs in a transaction, and the balancing trigger runs at commit. An uncommitted entry disappears whole; a committed one was replicated synchronously before the commit returned.` },
+  { q: 'Without app.set(\'trust proxy\', 2), what does req.ip contain on AWS?', o: ['The user\'s real IP', 'CloudFront\'s edge IP', 'The ALB\'s private address, so every user shares one rate-limit bucket', 'Nothing; Express throws'], a: 2, x: `Express sees the TCP connection from the ALB. The real client IP is in X-Forwarded-For, two hops back, and Express only reads it when told how many proxies to trust.` },
+  { q: 'Why is DynamoDB a poor fit for the ledger?', o: ['It is too expensive', 'It has no deferred triggers, multi-table SQL, or trigram search, which the ledger rules depend on', 'It is not available in Mumbai', 'It cannot store numbers'], a: 1, x: `The balancing rule, posting transactions across tables, the trial balance query, and pg_trgm matching are all Postgres features. Moving them into app code is where ledger bugs start.` },
+  { q: 'Which region must CloudFront\'s ACM certificate be created in?', o: ['ap-south-1, next to the app', 'us-east-1', 'Any region', 'The region closest to the user'], a: 1, x: `CloudFront only reads certificates from us-east-1. The ALB's certificate lives in ap-south-1.` },
+  { q: 'How does GitHub Actions get permission to deploy?', o: ['An access key stored in GitHub secrets', 'The root account password', 'A short-lived OIDC token exchanged with IAM for a role that trusts only main', 'ECS pulls from GitHub on a schedule'], a: 2, x: `OIDC credentials last minutes and are scoped to one repo and branch. A leaked long-lived key would stay valid until someone noticed.` },
+];
+const quizEl = document.getElementById('quiz');
+let answered = 0, right = 0;
+quizEl.innerHTML = QUIZ.map((q, i) => `<div class="card q" data-i="${i}"><h4>${i + 1}. ${q.q}</h4><div class="opts">${q.o.map((o, k) => `<button type="button" data-k="${k}">${o}</button>`).join('')}</div><div class="explain">${q.x}</div></div>`).join('');
+function renderScore() { document.getElementById('score').textContent = `${right} correct, ${answered} of ${QUIZ.length} answered`; }
+quizEl.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const card = b.closest('.q'); if (card.classList.contains('done')) return;
+  const q = QUIZ[card.dataset.i], k = Number(b.dataset.k);
+  card.classList.add('done'); answered++;
+  if (k === q.a) right++; else b.classList.add('wrong');
+  card.querySelectorAll('button')[q.a].classList.add('right');
+  renderScore();
+});
+renderScore();
+
+// ---------- Theme + nav highlight ----------
+const themeBtn = document.getElementById('themeBtn');
+const themes = ['auto', 'light', 'dark'];
+let theme = 'auto';
+try { theme = localStorage.getItem('ll-theme') || 'auto'; } catch (e) {}
+function applyTheme() {
+  if (theme === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', theme);
+  themeBtn.textContent = 'Theme: ' + theme;
+}
+themeBtn.addEventListener('click', () => {
+  theme = themes[(themes.indexOf(theme) + 1) % 3];
+  try { localStorage.setItem('ll-theme', theme); } catch (e) {}
+  applyTheme();
+});
+applyTheme();
+const navLinks = [...document.querySelectorAll('nav.top a')];
+const io = new IntersectionObserver(entries => entries.forEach(en => {
+  if (en.isIntersecting) navLinks.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id));
+}), { rootMargin: '-40% 0px -55% 0px' });
+document.querySelectorAll('main section').forEach(s => io.observe(s));
+</script>
+</body>
+</html>

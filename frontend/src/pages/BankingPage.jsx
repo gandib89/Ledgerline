@@ -84,6 +84,7 @@ export function BankingPage() {
     onSuccess: (data) => {
       setImportSummary(data);
       setSelectedStatementId(data.statement.id);
+      setFileError('');
       queryClient.invalidateQueries({ queryKey: ['bank-statements'] });
       notify({ title: 'Statement imported', message: `${data.imported} lines are ready for reconciliation.`, tone: 'success' });
     },
@@ -170,7 +171,7 @@ export function BankingPage() {
   function setColumn(key, value) { setMapping((current) => ({ ...current, columns: { ...current.columns, [key]: value } })); }
   function submitImport(event) {
     event.preventDefault();
-    if (!file || !mapping.columns.date || !mapping.columns.description || !mapping.columns.balance || (!mapping.columns.amount && (!mapping.columns.debit || !mapping.columns.credit))) { setFileError('Map the date, description, balance, and amount columns.'); return; }
+    if (!file || !mapping.columns.date || !mapping.columns.description || (!mapping.columns.amount && (!mapping.columns.debit || !mapping.columns.credit))) { setFileError('Map the date, description, and amount (or debit/credit) columns.'); return; }
     importStatement.mutate();
   }
 

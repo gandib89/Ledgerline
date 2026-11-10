@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useOutletContext } from 'react-router-dom';
 import { AsyncState } from '../components/AsyncState.jsx';
@@ -9,9 +9,10 @@ import { todayInNepal } from '../lib/date.js';
 export function GeneralLedgerPage() {
   const { activeOrganizationId, currentFiscalYear } = useOutletContext();
   const [accountId, setAccountId] = useState('');
-  const [from, setFrom] = useState(currentFiscalYear?.startDate ?? '1900-01-01');
+  const [from, setFrom] = useState(currentFiscalYear?.startDate ?? todayInNepal());
   const [to, setTo] = useState(todayInNepal());
   const accounts = useQuery({ queryKey: ['accounts', activeOrganizationId], queryFn: () => apiRequest('/accounts'), enabled: Boolean(activeOrganizationId) });
+  useEffect(() => setAccountId(''), [activeOrganizationId]);
   const ledger = useQuery({
     queryKey: ['general-ledger', activeOrganizationId, accountId, from, to],
     queryFn: () => apiRequest(`/reports/general-ledger?accountId=${accountId}&from=${from}&to=${to}`),

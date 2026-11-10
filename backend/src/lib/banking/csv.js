@@ -112,6 +112,7 @@ export function parseAndValidateStatement(csvText, columnMapping) {
   const { columns } = columnMapping;
   const colIndex = {};
   for (const [field, headerName] of Object.entries(columns)) {
+    if (!headerName) continue;
     const idx = header.indexOf(headerName);
     if (idx === -1) throw businessRule('unmapped_column', `Column "${headerName}" not found in statement header`);
     colIndex[field] = idx;
