@@ -28,6 +28,10 @@ beforeAll(async () => {
     data: { fiscalYearId: fiscalYear.id, label: 'Kartik', startDate: new Date('2025-10-16'), endDate: new Date('2025-11-15'), isOpen: true },
   });
 
+  await prisma.accountingPeriod.create({
+    data: { fiscalYearId: fiscalYear.id, label: 'Mangsir', startDate: new Date('2025-11-16'), endDate: new Date('2025-12-15'), isOpen: true },
+  });
+
   await prisma.account.create({ data: { organizationId: owner.orgId, code: '1100', name: 'Accounts Receivable', type: 'ASSET', isControlAccount: true } });
   await prisma.account.create({ data: { organizationId: owner.orgId, code: '1020', name: 'Bank — Nabil', type: 'ASSET', isBankAccount: true } });
   salesAccount = await prisma.account.create({ data: { organizationId: owner.orgId, code: '4100', name: 'Sales Revenue', type: 'REVENUE' } });
@@ -89,9 +93,6 @@ describe('GET /reports/ar-aging', () => {
   });
 
   it('ignores documents whose Posting Date is after today', async () => {
-    await prisma.accountingPeriod.create({
-      data: { fiscalYearId: fiscalYear.id, label: 'Mangsir', startDate: new Date('2025-11-16'), endDate: new Date('2025-12-15'), isOpen: true },
-    });
     const before = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
     await postInvoice('2025-11-20', 7000); // postingDate in the future
     const after = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
@@ -105,6 +106,28 @@ describe('GET /reports/ar-aging', () => {
     expect(res.status).toBe(400);
     const dated = await request(app).get('/api/v1/reports/ar-aging').query({ asOf: '2025-11-15' }).set(owner.headers);
     expect(dated.status).toBe(400);
+  });
+
+  it('adds back allocations from future-dated receipts so the total still equals AR (1100)', async () => {
+    const holeParty = await prisma.party.create({ data: { organizationId: owner.orgId, type: 'CUSTOMER', code: 'CUS-HOLE', name: 'Future Receipt Customer', creditDays: 30 } });
+    const created = await request(app).post('/api/v1/invoices').set(owner.headers).send({
+      partyId: holeParty.id, docDate: '2025-10-20',
+      lines: [{ accountId: salesAccount.id, description: 'Goods', quantity: 1, unitPrice: 2500 }],
+    });
+    await request(app).post(`/api/v1/invoices/${created.body.id}/post`).set(owner.headers).send();
+    const bank = await prisma.account.findFirstOrThrow({ where: { organizationId: owner.orgId, code: '1020' } });
+    // Receipt dated after today, already allocated 1000 to the invoice: the ledger does not see it yet.
+    const receipt = await request(app).post('/api/v1/receipts').set(owner.headers).send({
+      partyId: holeParty.id, docDate: '2025-11-20', depositAccountId: bank.id, amount: 1200, allocations: [{ invoiceId: created.body.id, amount: 1000 }],
+    });
+    expect(receipt.status).toBe(201);
+
+    const res = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
+    const row = res.body.rows.find((r) => r.partyId === holeParty.id);
+    expect(row.buckets.current).toBe('2500.00'); // 2500 - 1000 allocated, + 1000 added back
+    expect(row.unapplied).toBe('0.00'); // the 200 remainder belongs to a future receipt
+    expect(row.total).toBe('2500.00');
+    expect(res.body.integrity.balanced).toBe(true);
   });
 
   it("never includes another organization's documents", async () => {
@@ -129,6 +152,131 @@ describe('GET /reports/ar-aging', () => {
 
     const res = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
     expect(res.body.rows.find((r) => r.partyId === otherParty.id)).toBeUndefined();
+    expect(res.body.integrity.balanced).toBe(true);
+  });
+});
+
+describe('GET /reports/ap-aging', () => {
+  let expenseAccount, supplierA, supplierB, supplierC, bank;
+  beforeAll(async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2025-11-15T06:00:00Z'));
+    await prisma.account.create({ data: { organizationId: owner.orgId, code: '2100', name: 'Accounts Payable', type: 'LIABILITY', isControlAccount: true } });
+    expenseAccount = await prisma.account.create({ data: { organizationId: owner.orgId, code: '5100', name: 'Office Supplies', type: 'EXPENSE' } });
+    bank = await prisma.account.findFirstOrThrow({ where: { organizationId: owner.orgId, code: '1020' } });
+    const mk = (code, name, creditDays) => prisma.party.create({ data: { organizationId: owner.orgId, type: 'SUPPLIER', code, name, creditDays } });
+    supplierA = await mk('SUP-A', 'Alpha Stationers', 30);
+    supplierB = await mk('SUP-B', 'Beta Traders', 15);
+    supplierC = await mk('SUP-C', 'Gamma Supplies', 30);
+  });
+  afterAll(() => vi.useRealTimers());
+
+  let refSeq = 0;
+  async function postBill(partyId, docDate, amount, postingDate) {
+    refSeq += 1;
+    const created = await request(app).post('/api/v1/bills').set(owner.headers).send({
+      partyId, docDate, referenceNo: `AP-${refSeq}`, ...(postingDate ? { postingDate } : {}),
+      lines: [{ accountId: expenseAccount.id, description: 'Goods', quantity: 1, unitPrice: amount }],
+    });
+    expect(created.status).toBe(201);
+    const posted = await request(app).post(`/api/v1/bills/${created.body.id}/post`).set(owner.headers).send();
+    expect(posted.status).toBe(200);
+    return created.body.id;
+  }
+  async function payBill(partyId, docDate, amount, allocations = []) {
+    refSeq += 1;
+    const res = await request(app).post('/api/v1/supplier-payments').set(owner.headers).set('Idempotency-Key', `ap-aging-${refSeq}`).send({
+      partyId, docDate, paidFromAccountId: bank.id, amount, allocations,
+    });
+    expect(res.status).toBe(201);
+    return res.body.supplierPayment.id;
+  }
+  const getAging = () => request(app).get('/api/v1/reports/ap-aging').set(owner.headers);
+
+  it('buckets open Bills from the Due Date, nets partial and unapplied payments, and reconciles to AP (2100)', async () => {
+    await postBill(supplierA.id, '2025-11-10', 1000); // due 2025-12-10 -> current
+    const overdue = await postBill(supplierA.id, '2025-10-01', 2000); // due 2025-10-31 -> 15 days overdue -> 1-30
+    await postBill(supplierA.id, '2025-07-20', 3000, '2025-11-05'); // late Bill: due 2025-08-19 -> 88 days overdue -> 61-90
+    await postBill(supplierB.id, '2025-09-01', 4000); // due 2025-09-16 -> 60 days overdue -> 31-60
+    await postBill(supplierB.id, '2025-11-20', 7000); // future Posting Date -> excluded
+    await payBill(supplierA.id, '2025-11-12', 500, [{ billId: overdue, amount: 500 }]); // 2000 -> 1500
+    await payBill(supplierA.id, '2025-11-13', 800); // unapplied advance
+
+    const res = await getAging();
+    expect(res.status).toBe(200);
+    expect(res.body.asOf).toBe('2025-11-15');
+
+    const a = res.body.rows.find((r) => r.partyId === supplierA.id);
+    expect(a.buckets).toEqual({ current: '1000.00', d1_30: '1500.00', d31_60: '0.00', d61_90: '3000.00', d90_plus: '0.00' });
+    expect(a.unapplied).toBe('-800.00');
+    expect(a.total).toBe('4700.00'); // 5500 open Bills - 800 unapplied
+    expect(a.invoices).toHaveLength(3);
+
+    const b = res.body.rows.find((r) => r.partyId === supplierB.id);
+    expect(b.buckets).toEqual({ current: '0.00', d1_30: '0.00', d31_60: '4000.00', d61_90: '0.00', d90_plus: '0.00' });
+    expect(b.unapplied).toBe('0.00');
+    expect(b.total).toBe('4000.00');
+
+    expect(res.body.totals.grandTotal).toBe('8700.00');
+    expect(res.body.integrity.apControlBalance).toBe('8700.00');
+    expect(res.body.integrity.balanced).toBe(true);
+  });
+
+  it('adds back allocations from future-dated payments so the total still equals AP (2100)', async () => {
+    const bill = await postBill(supplierC.id, '2025-10-25', 2500); // due 2025-11-24 -> current
+    // Payment dated after today, already allocated 1000 to the Bill: the ledger does not see it yet.
+    await payBill(supplierC.id, '2025-11-20', 1200, [{ billId: bill, amount: 1000 }]);
+
+    const res = await getAging();
+    const row = res.body.rows.find((r) => r.partyId === supplierC.id);
+    expect(row.buckets.current).toBe('2500.00'); // 2500 - 1000 allocated, + 1000 added back
+    expect(row.unapplied).toBe('0.00'); // the 200 remainder belongs to a future payment
+    expect(row.total).toBe('2500.00');
+    expect(res.body.integrity.balanced).toBe(true);
+  });
+
+  it('keeps a Bill that a future-dated payment settles in full, and counts allocations to a future-dated Bill as unapplied', async () => {
+    const paidLater = await postBill(supplierC.id, '2025-10-26', 600); // due 2025-11-25 -> current
+    await payBill(supplierC.id, '2025-11-21', 600, [{ billId: paidLater, amount: 600 }]); // Bill becomes PAID, payment in the future
+    const futureBill = await postBill(supplierC.id, '2025-11-22', 900); // future Posting Date
+    await payBill(supplierC.id, '2025-11-14', 1000, [{ billId: futureBill, amount: 400 }]); // earlier payment, 400 applied to a future Bill
+
+    const res = await getAging();
+    const row = res.body.rows.find((r) => r.partyId === supplierC.id);
+    expect(row.buckets.current).toBe('3100.00'); // 2500 + 600
+    expect(row.unapplied).toBe('-1000.00'); // 600 outstanding + 400 applied to a Bill the ledger does not see yet
+    expect(row.total).toBe('2100.00');
+    expect(res.body.integrity.balanced).toBe(true);
+  });
+
+  it('rejects the asOf query parameter', async () => {
+    expect((await request(app).get('/api/v1/reports/ap-aging?asOf=').set(owner.headers)).status).toBe(400);
+    expect((await request(app).get('/api/v1/reports/ap-aging').query({ asOf: '2025-11-15' }).set(owner.headers)).status).toBe(400);
+  });
+
+  it("never includes another organization's Bills or payments", async () => {
+    const other = await makeUserWithOrg(app, 'other-ap@reports.test', 'Other AP Co');
+    await prisma.account.create({ data: { organizationId: other.orgId, code: '2100', name: 'Accounts Payable', type: 'LIABILITY', isControlAccount: true } });
+    const otherSupplier = await prisma.party.create({ data: { organizationId: other.orgId, type: 'SUPPLIER', code: 'SUP-901', name: 'Other Supplier' } });
+    const otherFy = await prisma.fiscalYear.create({
+      data: { organizationId: other.orgId, label: '2082/83', startDate: new Date('2025-07-16'), endDate: new Date('2026-07-15') },
+    });
+    const mkDoc = (docType, amount, postingDate = '2025-11-01') => prisma.document.create({
+      data: {
+        organizationId: other.orgId, fiscalYearId: otherFy.id, docType, docDate: new Date(postingDate), postingDate: new Date(postingDate),
+        partyId: otherSupplier.id, status: 'POSTED', grandTotal: amount, outstandingAmount: amount,
+        ...(docType === 'BILL' ? { referenceNo: 'THEIRS-1' } : {}),
+      },
+    });
+    const otherBill = await mkDoc('BILL', 999);
+    await mkDoc('SUPPLIER_PAYMENT', 333);
+    // a future-dated payment of org B allocated to org B's Bill
+    const otherFuture = await mkDoc('SUPPLIER_PAYMENT', 100, '2025-11-25');
+    await prisma.paymentAllocation.create({ data: { organizationId: other.orgId, paymentDocumentId: otherFuture.id, targetDocumentId: otherBill.id, amount: 100 } });
+
+    const res = await getAging();
+    expect(res.body.rows.find((r) => r.partyId === otherSupplier.id)).toBeUndefined();
+    expect(res.body.rows.flatMap((r) => r.invoices).find((i) => i.id === otherBill.id)).toBeUndefined();
     expect(res.body.integrity.balanced).toBe(true);
   });
 });

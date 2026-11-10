@@ -5,13 +5,13 @@ import { authenticate } from '../middleware/authenticate.js';
 import { resolveTenant } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
 import { notFound } from '../lib/accounting/errors.js';
-import { AR_ACCOUNT_CODE } from '../lib/accounting/chart-of-accounts.js';
+import { AR_ACCOUNT_CODE, AP_ACCOUNT_CODE } from '../lib/accounting/chart-of-accounts.js';
 import { findFiscalYearForDate } from '../lib/accounting/fiscal-year.js';
 import { computeBookBalance } from '../lib/banking/reconciliation-service.js';
 import { dec, add, sub, eq, isZero } from '../lib/money.js';
 import { reportLimiter } from '../lib/rate-limit.js';
 import { todayInNepal } from '../lib/nepal-date.js';
-import { buildAging } from '../lib/accounting/aging.js';
+import { buildAging, loadAgingInputs } from '../lib/accounting/aging.js';
 
 const router = Router();
 router.use(authenticate, resolveTenant, reportLimiter);
@@ -88,51 +88,47 @@ router.get('/reports/trial-balance', authorize('report.view'), async (req, res, 
 // Query Document, not JournalLine — the subledger view, not the ledger view
 // (§5's doc_open_by_party partial index is built exactly for this filter).
 // An honest "as of today" report: no asOf parameter, only documents whose
-// Posting Date is <= today, and Unapplied receipt amounts netted off so the
-// total reconciles to the 1100 Control Account. AP aging copies this shape.
-router.get('/reports/ar-aging', authorize('report.view'), async (req, res, next) => {
-  try {
-    z.object({}).strict().parse(req.query);
-    const today = todayInNepal();
-    const where = { organizationId: req.organizationId, postingDate: { lte: new Date(today) }, status: { in: ['POSTED', 'PARTIALLY_PAID'] }, outstandingAmount: { gt: 0 } };
+// Posting Date is <= today, and Unapplied payment amounts netted off so the
+// total reconciles to the Control Account. AR and AP aging share this shape.
+function agingHandler({ openType, paymentType, accountCode, controlKey, sign }) {
+  return async (req, res, next) => {
+    try {
+      z.object({}).strict().parse(req.query);
+      const today = todayInNepal();
+      const { open, unapplied } = await loadAgingInputs({ organizationId: req.organizationId, today, openType, paymentType });
+      const { buckets, rows, grandTotal } = buildAging({ today, open, unapplied });
 
-    const [invoices, receipts] = await Promise.all([
-      prisma.document.findMany({ where: { ...where, docType: 'INVOICE' }, include: { party: true } }),
-      prisma.document.findMany({ where: { ...where, docType: 'RECEIPT' }, include: { party: true } }),
-    ]);
+      // Same account-balance query style as trial balance, filtered to the
+      // control account — the response is self-checking (grand total should
+      // equal this, mirrors INV-3) without a second round trip.
+      const [row] = await prisma.$queryRaw`
+        SELECT COALESCE(SUM(jl.debit), 0) AS total_debit, COALESCE(SUM(jl.credit), 0) AS total_credit
+        FROM "JournalLine" jl
+        JOIN "JournalEntry" je ON je.id = jl."journalEntryId"
+        JOIN "Account" a ON a.id = jl."accountId"
+        WHERE jl."organizationId" = ${req.organizationId}
+          AND a.code = ${accountCode}
+          AND je.status IN ('POSTED', 'REVERSED')
+          AND je."entryDate" <= ${today}::date
+      `;
+      const balance = sign === 'debit' ? sub(dec(row.total_debit), dec(row.total_credit)) : sub(dec(row.total_credit), dec(row.total_debit));
 
-    const { buckets, rows, grandTotal } = buildAging({
-      today,
-      open: invoices.map((d) => ({ partyId: d.partyId, partyName: d.party?.name ?? null, id: d.id, docNo: d.docNo, dueDate: d.dueDate ?? d.docDate, outstanding: d.outstandingAmount })),
-      unapplied: receipts.map((d) => ({ partyId: d.partyId, partyName: d.party?.name ?? null, amount: d.outstandingAmount })),
-    });
+      res.json({
+        asOf: today,
+        buckets,
+        rows,
+        totals: { grandTotal: grandTotal.toFixed(2) },
+        integrity: { [controlKey]: balance.toFixed(2), balanced: eq(grandTotal, balance) },
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+}
 
-    // Same account-balance query style as trial balance, filtered to AR —
-    // the response is self-checking (grand total should equal this,
-    // mirrors INV-3) without a second round trip from the frontend.
-    const [arRow] = await prisma.$queryRaw`
-      SELECT COALESCE(SUM(jl.debit), 0) AS total_debit, COALESCE(SUM(jl.credit), 0) AS total_credit
-      FROM "JournalLine" jl
-      JOIN "JournalEntry" je ON je.id = jl."journalEntryId"
-      JOIN "Account" a ON a.id = jl."accountId"
-      WHERE jl."organizationId" = ${req.organizationId}
-        AND a.code = ${AR_ACCOUNT_CODE}
-        AND je.status IN ('POSTED', 'REVERSED')
-        AND je."entryDate" <= ${today}::date
-    `;
-    const arControlBalance = sub(dec(arRow.total_debit), dec(arRow.total_credit));
-
-    res.json({
-      asOf: today,
-      buckets,
-      rows,
-      totals: { grandTotal: grandTotal.toFixed(2) },
-      integrity: { arControlBalance: arControlBalance.toFixed(2), balanced: eq(grandTotal, arControlBalance) },
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+router.get('/reports/ar-aging', authorize('report.view'), agingHandler({ openType: 'INVOICE', paymentType: 'RECEIPT', accountCode: AR_ACCOUNT_CODE, controlKey: 'arControlBalance', sign: 'debit' }));
+// Accounts Payable (2100) is credit-normal.
+router.get('/reports/ap-aging', authorize('report.view'), agingHandler({ openType: 'BILL', paymentType: 'SUPPLIER_PAYMENT', accountCode: AP_ACCOUNT_CODE, controlKey: 'apControlBalance', sign: 'credit' }));
 
 // account drill-down with running balance — clickable rows carry the
 // source document via a LEFT JOIN on Document.journalEntryId, so the

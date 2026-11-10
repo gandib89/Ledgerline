@@ -365,6 +365,11 @@ registry.registerPath({
   responses: { 200: { description: 'OK', ...json(z.object({ rows: z.array(z.object({ partyId: uuid(), total: money() })), totals: z.object({ grandTotal: money() }), integrity: z.object({ balanced: z.boolean(), arControlBalance: money() }) })) } },
 });
 registry.registerPath({
+  method: 'get', path: '/api/v1/reports/ap-aging', tags: ['Reports'], summary: "AP aging as of today (Nepal), net of unapplied Supplier Payments, self-checked against the Accounts Payable (2100) balance",
+  security: AUTH, request: { headers: tenantParams },
+  responses: { 200: { description: 'OK', ...json(z.object({ rows: z.array(z.object({ partyId: uuid(), total: money() })), totals: z.object({ grandTotal: money() }), integrity: z.object({ balanced: z.boolean(), apControlBalance: money() }) })) } },
+});
+registry.registerPath({
   method: 'get', path: '/api/v1/reports/general-ledger', tags: ['Reports'], summary: 'Running-balance ledger for one account over a date range',
   security: AUTH, request: { headers: tenantParams, query: z.object({ accountId: uuid(), from: dateStr(), to: dateStr() }) },
   responses: { 200: { description: 'OK', ...json(z.object({ account: z.object({ code: z.string() }), openingBalance: money(), lines: z.array(z.object({ runningBalance: money() })), closingBalance: money() })) } },

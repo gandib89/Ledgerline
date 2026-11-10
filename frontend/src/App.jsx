@@ -14,6 +14,7 @@ import { InvoiceDetailPage } from './pages/InvoiceDetailPage.jsx';
 import { InvoiceEditorPage } from './pages/InvoiceEditorPage.jsx';
 import { InvoicesPage } from './pages/InvoicesPage.jsx';
 import { TrialBalancePage } from './pages/TrialBalancePage.jsx';
+import { ApAgingPage } from './pages/ApAgingPage.jsx';
 import { ArAgingPage } from './pages/ArAgingPage.jsx';
 import { BalanceSheetPage } from './pages/BalanceSheetPage.jsx';
 import { BankReconciliationPage } from './pages/BankReconciliationPage.jsx';
@@ -60,6 +61,7 @@ function App() {
           <Route path="/banking" element={<BankingPage />} />
           <Route path="/reports/trial-balance" element={<TrialBalancePage />} />
           <Route path="/reports/general-ledger" element={<GeneralLedgerPage />} />
+          <Route path="/reports/ap-aging" element={<ApAgingPage />} />
           <Route path="/reports/ar-aging" element={<ArAgingPage />} />
           <Route path="/reports/profit-loss" element={<ProfitLossPage />} />
           <Route path="/reports/balance-sheet" element={<BalanceSheetPage />} />

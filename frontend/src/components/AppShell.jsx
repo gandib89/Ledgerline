@@ -18,6 +18,7 @@ const navigation = [
   ['customers', 'Suppliers', '/suppliers'],
   ['invoices', 'Bills', '/bills'],
   ['receipts', 'Supplier payments', '/supplier-payments/new'],
+  ['reports', 'AP Aging', '/reports/ap-aging'],
   ['journals', 'Journal entries', '/journals'],
   ['banking', 'Banking', '/banking'],
   ['reports', 'Trial Balance', '/reports/trial-balance'],

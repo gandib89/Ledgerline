@@ -538,6 +538,14 @@ export const handlers = [
     return ok({ asOf: new Date().toISOString().slice(0, 10), buckets, rows, totals: { grandTotal }, integrity: { arControlBalance: grandTotal, balanced: true } });
   }),
 
+  http.get('/api/v1/reports/ap-aging', () => ok({
+    asOf: new Date().toISOString().slice(0, 10),
+    buckets: [{ key: 'current', label: 'Current' }, { key: 'd1_30', label: '1-30 days' }, { key: 'd31_60', label: '31-60 days' }, { key: 'd61_90', label: '61-90 days' }, { key: 'd90_plus', label: '90+ days' }],
+    rows: [],
+    totals: { grandTotal: '0.00' },
+    integrity: { apControlBalance: '0.00', balanced: true },
+  })),
+
   http.get('/api/v1/reports/general-ledger', ({ request }) => {
     const accountId = new URL(request.url).searchParams.get('accountId');
     const account = demoAccounts.find(({ id }) => id === accountId);
