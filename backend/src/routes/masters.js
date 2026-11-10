@@ -41,6 +41,7 @@ function serializeParty(party) {
     name: party.name,
     email: party.email,
     phone: party.phone,
+    panVatNo: party.panVatNo,
     creditDays: party.creditDays,
     isActive: party.isActive,
   };
@@ -114,14 +115,19 @@ router.get('/roles', authorize('org.manage'), async (req, res, next) => {
 
 const listPartiesSchema = z.object({
   search: z.string().optional(),
+  // A Supplier list includes parties that are both; same for Customers.
+  type: z.string().toLowerCase().pipe(z.enum(['customer', 'supplier'])).optional(),
   page: z.coerce.number().int().min(1).default(1),
 });
 
 router.get('/parties', authorize('report.view'), async (req, res, next) => {
   try {
-    const { search, page } = listPartiesSchema.parse(req.query);
+    const { search, type, page } = listPartiesSchema.parse(req.query);
     const parties = await prisma.party.findMany({
-      where: search ? { name: { contains: search, mode: 'insensitive' } } : {},
+      where: {
+        ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
+        ...(type ? { type: { in: [type.toUpperCase(), 'BOTH'] } } : {}),
+      },
       orderBy: { code: 'asc' },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,

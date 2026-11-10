@@ -412,6 +412,7 @@ router.get('/reports/bank-reconciliation', authorize('report.view'), async (req,
       bookBalance: bookBalance.toFixed(2),
       difference: difference.toFixed(2),
       integrity: { balanced: isZero(difference) },
+      // eslint-disable-next-line no-restricted-syntax -- integer row counts, not money
       counts: { ...counts, matched: counts.autoMatched + counts.manualMatched, total: lines.length },
     });
   } catch (err) {

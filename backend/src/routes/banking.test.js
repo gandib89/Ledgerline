@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import { prisma } from '../db/client.js';
@@ -191,10 +191,15 @@ describe('POST /lines/:id/reject', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ status: 'unmatched', matchedJournalLineId: null, matchConfidence: null });
-    // The audit row is written after the response finishes, so poll for it.
-    await expect.poll(() => prisma.auditLog.findFirst({
-      where: { organizationId: owner.orgId, action: 'statementLine.suggestionRejected', entityId: suggested.id },
-    })).not.toBeNull();
+    // The audit row is written after the response finishes, so poll briefly.
+    const audit = await vi.waitFor(async () => {
+      const row = await prisma.auditLog.findFirst({
+        where: { organizationId: owner.orgId, action: 'statementLine.suggestionRejected', entityId: suggested.id },
+      });
+      if (!row) throw new Error('audit row not written yet');
+      return row;
+    });
+    expect(audit).not.toBeNull();
   });
 });
 
@@ -222,9 +227,13 @@ describe('RECON-4: manual match', () => {
     expect(matchRes.body.matchedBy).toBe('manual');
     expect(matchRes.body.matchConfidence).toBe('1.000');
 
-    await expect.poll(() => prisma.auditLog.findFirst({
-      where: { organizationId: owner.orgId, action: 'statementLine.matched', entityId: lineId },
-    })).not.toBeNull();
+    // The audit row is written after the response finishes, so poll briefly.
+    const audit = await vi.waitFor(async () => {
+      const row = await prisma.auditLog.findFirst({ where: { organizationId: owner.orgId, action: 'statementLine.matched', entityId: lineId } });
+      if (!row) throw new Error('audit row not written yet');
+      return row;
+    });
+    expect(audit).not.toBeNull();
   });
 });
 

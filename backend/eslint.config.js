@@ -18,12 +18,20 @@ export default [
     },
   },
   {
-  files: ['src/accounting/**/*.js', 'src/reporting/**/*.js'],
+  files: [
+    'src/lib/accounting/**/*.js',
+    'src/lib/banking/**/*.js',
+    'src/lib/invoices/**/*.js',
+    'src/routes/reports.js',
+  ],
+  // Tests compute independent expected values with plain JS on purpose.
+  ignores: ['**/*.test.js'],
   rules: {
     'no-restricted-syntax': [
       'error',
       {
-        selector: "BinaryExpression[operator='+']",
+        // `x + 1` is index/counter arithmetic, not money.
+        selector: "BinaryExpression[operator='+']:not([right.type='Literal'][right.value=1])",
         message: 'No raw + on money. Use add() from lib/money.js.',
       },
       {
@@ -37,10 +45,4 @@ export default [
     ],
   },
 },
-// A lint rule that only watches two folders (accounting/ and reporting/) — folders that don't exist yet, they'll be created Day 3+. Inside those folders only, it blocks:
-
-// plain + (like a + b)
-// parseFloat(x)
-// Number(x)
-
 ];
