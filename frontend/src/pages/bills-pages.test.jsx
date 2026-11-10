@@ -221,6 +221,39 @@ describe('Bill editor', () => {
     });
   });
 
+  it('on a duplicate Supplier Reference, says it is already saved and links to the existing Bill', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.post('/api/v1/bills/preview', () => HttpResponse.json({
+        lines: [{ lineNo: 1, taxableAmount: '2500.00', taxAmount: '0.00', lineTotal: '2500.00' }],
+        totals: { subtotal: '2500.00', discountAmount: '0.00', taxableAmount: '2500.00', taxAmount: '0.00', grandTotal: '2500.00' },
+      })),
+      http.post('/api/v1/bills', () => HttpResponse.json({
+        error: {
+          code: 'duplicate_supplier_reference',
+          message: 'A Bill with Supplier Reference "INV-12" already exists for this Supplier. Open and edit it instead of entering it again.',
+          details: { billId: BILL_ID, referenceNo: 'INV-12' },
+        },
+      }, { status: 409 })),
+    );
+
+    renderBills('/bills/new');
+    await user.selectOptions(await screen.findByLabelText('Supplier'), SUPPLIER_ID);
+    await user.type(screen.getByLabelText('Supplier reference'), 'inv-12');
+    await user.type(screen.getByLabelText('Bill date'), '2025-07-20');
+    await user.type(screen.getByLabelText('Line 1 description'), 'Printer paper');
+    await user.selectOptions(screen.getByLabelText('Line 1 account'), EXPENSE_ID);
+    await user.clear(screen.getByLabelText('Line 1 quantity'));
+    await user.type(screen.getByLabelText('Line 1 quantity'), '10');
+    await user.clear(screen.getByLabelText('Line 1 unit price'));
+    await user.type(screen.getByLabelText('Line 1 unit price'), '250');
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+
+    const alert = await screen.findByRole('alert', { name: /already saved/i });
+    expect(within(alert).getByText(/INV-12/)).toBeInTheDocument();
+    expect(within(alert).getByRole('link', { name: 'Open existing bill' })).toHaveAttribute('href', `/bills/${BILL_ID}`);
+  });
+
   it('hides the Save action without bill.create', async () => {
     renderBills('/bills/new', ['report.view']);
 

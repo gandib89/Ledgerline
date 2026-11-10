@@ -380,3 +380,78 @@ describe('write-path tenant isolation (org A user sending org B ids)', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('Duplicate Supplier Reference', () => {
+  const patch = (headers, id, body) => request(app).patch(`/api/v1/bills/${id}`).set(headers).send(body);
+  let sup2;
+
+  beforeAll(async () => {
+    sup2 = await prisma.party.create({
+      data: { organizationId: owner.orgId, type: 'SUPPLIER', code: 'SUP-DUP', name: 'Pokhara Paper', creditDays: 15 },
+    });
+  });
+
+  it('409s a second Bill with the same reference, ignoring case and surrounding spaces, naming the first Bill', async () => {
+    const first = await post(owner.headers, billBody({ referenceNo: 'inv-D1' }));
+    expect(first.status).toBe(201);
+
+    const dup = await post(owner.headers, billBody({ referenceNo: ' INV-d1 ' }));
+    expect(dup.status).toBe(409);
+    expect(dup.body.error.code).toBe('duplicate_supplier_reference');
+    expect(dup.body.error.details).toEqual({ billId: first.body.id, referenceNo: 'inv-D1' });
+    expect(dup.body.error.message).toMatch(/open and edit/i);
+  });
+
+  it('allows the same reference for a different Supplier and in a different organization', async () => {
+    await post(owner.headers, billBody({ referenceNo: 'SHARED-1' }));
+    const otherSupplierSameRef = await post(owner.headers, billBody({ partyId: sup2.id, referenceNo: 'SHARED-1' }));
+    const otherOrgSameRef = await post(other.headers, theirBillBody('SHARED-1'));
+    expect([otherSupplierSameRef.status, otherOrgSameRef.status]).toEqual([201, 201]);
+  });
+
+  it('409s an update that moves a draft onto another Bill\'s reference, but not one that keeps its own', async () => {
+    const a = await post(owner.headers, billBody({ referenceNo: 'UPD-A' }));
+    const b = await post(owner.headers, billBody({ referenceNo: 'UPD-B' }));
+
+    const clash = await patch(owner.headers, b.body.id, { version: 0, referenceNo: 'upd-a', lines: billBody().lines });
+    expect(clash.status).toBe(409);
+    expect(clash.body.error.code).toBe('duplicate_supplier_reference');
+    expect(clash.body.error.details).toEqual({ billId: a.body.id, referenceNo: 'UPD-A' });
+
+    const own = await patch(owner.headers, b.body.id, { version: 0, referenceNo: ' UPD-b ', lines: billBody().lines });
+    expect(own.status).toBe(200);
+  });
+
+  it('409s an update that moves a draft to another Supplier who already has that reference', async () => {
+    await post(owner.headers, billBody({ partyId: sup2.id, referenceNo: 'MOVE-1' }));
+    const mine = await post(owner.headers, billBody({ referenceNo: 'MOVE-1' }));
+    const res = await patch(owner.headers, mine.body.id, { version: 0, partyId: sup2.id, lines: billBody().lines });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('duplicate_supplier_reference');
+  });
+
+  it('does not let a REVERSED Bill block the same reference again', async () => {
+    const old = await post(owner.headers, billBody({ referenceNo: 'REV-1' }));
+    await prisma.document.update({ where: { id: old.body.id }, data: { status: 'REVERSED' } });
+
+    const again = await post(owner.headers, billBody({ referenceNo: 'REV-1' }));
+    expect(again.status).toBe(201);
+  });
+
+  it('rejects a Bill with a blank reference at the database (CHECK constraint)', async () => {
+    const doc = await prisma.document.findFirstOrThrow({ where: { organizationId: owner.orgId, docType: 'BILL' } });
+    await expect(prisma.document.update({ where: { id: doc.id }, data: { referenceNo: '   ' } })).rejects.toThrow(/Document_bill_reference_required/);
+  });
+
+  it('two simultaneous creates with the same reference give exactly one 201 and one 409', async () => {
+    const results = await Promise.all([
+      post(owner.headers, billBody({ referenceNo: 'RACE-1' })),
+      post(owner.headers, billBody({ referenceNo: 'race-1 ' })),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    const loser = results.find((r) => r.status === 409);
+    const winner = results.find((r) => r.status === 201);
+    expect(loser.body.error.code).toBe('duplicate_supplier_reference');
+    expect(loser.body.error.details.billId).toBe(winner.body.id);
+  });
+});

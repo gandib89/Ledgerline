@@ -105,6 +105,7 @@ app.use((err, req, res, _next) => {
     error: {
       code: err.code || 'INTERNAL_ERROR',
       message: err.status ? (err.message || 'Something went wrong') : 'Something went wrong',
+      ...(err.status && err.details ? { details: err.details } : {}),
       requestId: req.id,
     },
   });

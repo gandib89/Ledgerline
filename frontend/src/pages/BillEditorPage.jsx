@@ -66,6 +66,7 @@ export function BillEditorPage() {
   const [previewError, setPreviewError] = useState(null);
   const [previewPending, setPreviewPending] = useState(false);
   const [conflict, setConflict] = useState(false);
+  const [duplicate, setDuplicate] = useState(null);
 
   const suppliers = useQuery({
     queryKey: ['parties', activeOrganizationId, 'bill-supplier-selector'],
@@ -140,6 +141,10 @@ export function BillEditorPage() {
         setConflict(true);
         return;
       }
+      if (error.status === 409 && error.code === 'duplicate_supplier_reference' && error.details?.billId) {
+        setDuplicate(error.details);
+        return;
+      }
       notify({ title: 'Could not save bill', message: error.message, tone: 'error' });
     },
   });
@@ -172,6 +177,7 @@ export function BillEditorPage() {
     setErrors(billValidationErrors(parsed));
     if (!parsed.success) return;
     setConflict(false);
+    setDuplicate(null);
     saveBill.mutate(billInput(parsed.data));
   }
 
@@ -199,6 +205,16 @@ export function BillEditorPage() {
         <div className="conflict-banner" role="alert">
           <div><strong>This bill changed in another session.</strong><p>Reload the latest version before making more changes.</p></div>
           <button className="secondary-button" type="button" onClick={() => bill.refetch()}>Reload bill</button>
+        </div>
+      )}
+
+      {duplicate && (
+        <div className="conflict-banner" role="alert" aria-label="Bill already saved">
+          <div>
+            <strong>This Supplier invoice is already saved.</strong>
+            <p>Bill {duplicate.referenceNo} already exists for this Supplier. Open it to review or edit instead of entering it again.</p>
+          </div>
+          <Link className="secondary-button button-link" to={`/bills/${duplicate.billId}`}>Open existing bill</Link>
         </div>
       )}
 

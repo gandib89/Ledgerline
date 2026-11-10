@@ -46,6 +46,53 @@ async function fiscalYearForPostingDate(tx, organizationId, billDate, postingDat
   return findFiscalYearForDate(tx, organizationId, postingDate);
 }
 
+const REFERENCE_INDEX = 'Document_bill_supplier_reference_key';
+
+// Matched by index name only: any other unique violation must still surface.
+function isReferenceIndexViolation(err) {
+  return err.code === 'P2002' && JSON.stringify([err.meta, err.message]).includes(REFERENCE_INDEX);
+}
+
+// Another non-reversed Bill of this Supplier with the same trimmed, case-insensitive
+// Supplier Reference (mirrors the partial unique index).
+async function findDuplicateBill(tx, organizationId, partyId, referenceNo, excludeId) {
+  const [dup] = await tx.$queryRaw`
+    SELECT id, "referenceNo" FROM "Document"
+    WHERE "organizationId" = ${organizationId} AND "docType" = 'BILL' AND "status" <> 'REVERSED'
+      AND "partyId" = ${partyId} AND lower(btrim("referenceNo")) = lower(btrim(${referenceNo}))
+      AND id <> ${excludeId ?? ''}
+    LIMIT 1`;
+  return dup ?? null;
+}
+
+function duplicateReference(dup) {
+  const err = conflict(
+    'duplicate_supplier_reference',
+    `A Bill with Supplier Reference "${dup.referenceNo}" already exists for this Supplier. Open and edit it instead of entering it again.`,
+  );
+  err.details = { billId: dup.id, referenceNo: dup.referenceNo };
+  return err;
+}
+
+// Check first for a friendly 409; the SAVEPOINT + named-index catch is the race
+// backstop (same pattern as runIdempotent): a lost race aborts the Postgres
+// transaction, so roll back to the savepoint before looking up the winner.
+async function writeUniqueReference(tx, { organizationId, partyId, referenceNo, excludeId }, write) {
+  const dup = await findDuplicateBill(tx, organizationId, partyId, referenceNo, excludeId);
+  if (dup) throw duplicateReference(dup);
+
+  await tx.$executeRaw`SAVEPOINT bill_reference_write`;
+  try {
+    return await write();
+  } catch (err) {
+    if (!isReferenceIndexViolation(err)) throw err;
+    await tx.$executeRaw`ROLLBACK TO SAVEPOINT bill_reference_write`;
+    const winner = await findDuplicateBill(tx, organizationId, partyId, referenceNo, excludeId);
+    if (!winner) throw err;
+    throw duplicateReference(winner);
+  }
+}
+
 // Live totals for the bill editor — same recomputation as create/update,
 // nothing persisted. Backs POST /bills/preview.
 export async function previewBill(actor, { lines: lineInputs }) {
@@ -66,7 +113,7 @@ export async function createDraftBill(actor, input) {
     const lines = await resolveLines(tx, actor.organizationId, input.lines, { checkAccount: checkBillLineAccount });
     const totals = sumLines(lines);
 
-    return tx.document.create({
+    return writeUniqueReference(tx, { organizationId: actor.organizationId, partyId: party.id, referenceNo: input.referenceNo }, () => tx.document.create({
       data: {
         organizationId: actor.organizationId,
         fiscalYearId: fiscalYear.id,
@@ -87,7 +134,7 @@ export async function createDraftBill(actor, input) {
         lines: { create: lines.map(toDocumentLineData) },
       },
       include: { lines: true },
-    });
+    }));
   });
 }
 
@@ -127,7 +174,7 @@ export async function updateDraftBill(actor, documentId, expectedVersion, input)
     const lines = await resolveLines(tx, actor.organizationId, input.lines, { checkAccount: checkBillLineAccount });
     const totals = sumLines(lines);
 
-    const result = await tx.document.updateMany({
+    const result = await writeUniqueReference(tx, { organizationId: actor.organizationId, partyId: party.id, referenceNo, excludeId: documentId }, () => tx.document.updateMany({
       where: { id: documentId, organizationId: actor.organizationId, version: expectedVersion, status: 'DRAFT' },
       data: {
         fiscalYearId: fiscalYear.id,
@@ -144,7 +191,7 @@ export async function updateDraftBill(actor, documentId, expectedVersion, input)
         grandTotal: totals.grandTotal,
         version: { increment: 1 },
       },
-    });
+    }));
     if (result.count === 0) {
       throw conflict('version_conflict', `Bill ${documentId} was modified by someone else — reload and try again`);
     }

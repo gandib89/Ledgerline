@@ -6,9 +6,10 @@ let activeOrganizationId = null;
 let refreshPromise = null;
 
 export class ApiError extends Error {
-  constructor({ code = 'request_failed', message = 'Request failed', requestId = null, status = 500 }) {
+  constructor({ code = 'request_failed', message = 'Request failed', requestId = null, status = 500, details = null }) {
     super(message);
     this.name = 'ApiError';
+    this.details = details;
     this.code = code;
     this.requestId = requestId;
     this.status = status;
@@ -49,6 +50,7 @@ function toApiError(payload, status) {
     code: payload?.error?.code,
     message: payload?.error?.message,
     requestId: payload?.error?.requestId,
+    details: payload?.error?.details,
     status,
   });
 }
