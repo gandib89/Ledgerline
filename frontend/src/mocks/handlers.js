@@ -529,6 +529,7 @@ export const handlers = [
         partyId: party.id,
         partyName: party.name,
         buckets: { current: money(total), d1_30: '0.00', d31_60: '0.00', d61_90: '0.00', d90_plus: '0.00' },
+        unapplied: '0.00',
         total: money(total),
         invoices: invoices.map((invoice) => ({ id: invoice.id, docNo: invoice.docNo, dueDate: invoice.dueDate, outstandingAmount: invoice.outstandingAmount, bucket: 'current' })),
       };

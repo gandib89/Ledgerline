@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import { prisma } from '../db/client.js';
@@ -49,23 +49,87 @@ async function postInvoice(docDate, amount) {
 }
 
 describe('GET /reports/ar-aging', () => {
-  it('buckets open invoices by days overdue and self-checks against the AR control account', async () => {
-    // asOf 2025-11-15, 30-day credit terms baked into party.creditDays.
-    await postInvoice('2025-11-10', 1000); // due 2025-12-10 -> not yet due -> current
-    await postInvoice('2025-10-01', 2000); // due 2025-10-31 -> 15 days overdue -> 1-30
-    await postInvoice('2025-07-20', 3000); // due 2025-08-19 -> 88 days overdue -> 61-90
+  // "Today" is Nepal's today; pin the clock (Date only, so DB timers still run).
+  beforeAll(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2025-11-15T06:00:00Z'));
+  });
+  afterAll(() => vi.useRealTimers());
 
-    const res = await request(app).get('/api/v1/reports/ar-aging').query({ asOf: '2025-11-15' }).set(owner.headers);
+  async function postReceipt(docDate, amount, allocations = []) {
+    const bank = await prisma.account.findFirstOrThrow({ where: { organizationId: owner.orgId, code: '1020' } });
+    const res = await request(app).post('/api/v1/receipts').set(owner.headers).send({
+      partyId: party.id, docDate, depositAccountId: bank.id, amount, allocations,
+    });
+    expect(res.status).toBe(201);
+    return res.body;
+  }
+
+  it('buckets open invoices, nets partial and unapplied receipts, and reconciles to AR (1100)', async () => {
+    await postInvoice('2025-11-10', 1000); // due 2025-12-10 -> not yet due -> current
+    const overdue = await postInvoice('2025-10-01', 2000); // due 2025-10-31 -> 15 days overdue -> 1-30
+    await postInvoice('2025-07-20', 3000); // due 2025-08-19 -> 88 days overdue -> 61-90
+    await postReceipt('2025-11-12', 500, [{ invoiceId: overdue, amount: 500 }]); // partial: 1-30 bucket 2000 -> 1500
+    await postReceipt('2025-11-13', 800); // unapplied advance: reduces what the customer owes
+
+    const res = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
     expect(res.status).toBe(200);
+    expect(res.body.asOf).toBe('2025-11-15');
 
     const row = res.body.rows.find((r) => r.partyId === party.id);
     expect(row.buckets.current).toBe('1000.00');
-    expect(row.buckets.d1_30).toBe('2000.00');
+    expect(row.buckets.d1_30).toBe('1500.00');
     expect(row.buckets.d61_90).toBe('3000.00');
-    expect(row.total).toBe('6000.00');
+    expect(row.unapplied).toBe('-800.00');
+    expect(row.total).toBe('4700.00'); // 5500 open invoices - 800 unapplied
 
+    expect(res.body.totals.grandTotal).toBe('4700.00');
+    expect(res.body.integrity.arControlBalance).toBe('4700.00');
     expect(res.body.integrity.balanced).toBe(true);
-    expect(res.body.integrity.arControlBalance).toBe(res.body.totals.grandTotal);
+  });
+
+  it('ignores documents whose Posting Date is after today', async () => {
+    await prisma.accountingPeriod.create({
+      data: { fiscalYearId: fiscalYear.id, label: 'Mangsir', startDate: new Date('2025-11-16'), endDate: new Date('2025-12-15'), isOpen: true },
+    });
+    const before = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
+    await postInvoice('2025-11-20', 7000); // postingDate in the future
+    const after = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
+
+    expect(after.body.totals.grandTotal).toBe(before.body.totals.grandTotal);
+    expect(after.body.integrity.balanced).toBe(true);
+  });
+
+  it('rejects the asOf query parameter', async () => {
+    const res = await request(app).get('/api/v1/reports/ar-aging?asOf=').set(owner.headers);
+    expect(res.status).toBe(400);
+    const dated = await request(app).get('/api/v1/reports/ar-aging').query({ asOf: '2025-11-15' }).set(owner.headers);
+    expect(dated.status).toBe(400);
+  });
+
+  it("never includes another organization's documents", async () => {
+    const other = await makeUserWithOrg(app, 'other@reports.test', 'Other Co');
+    await prisma.account.create({ data: { organizationId: other.orgId, code: '1100', name: 'Accounts Receivable', type: 'ASSET', isControlAccount: true } });
+    const otherParty = await prisma.party.create({ data: { organizationId: other.orgId, type: 'CUSTOMER', code: 'CUS-901', name: 'Other Customer' } });
+    const otherFy = await prisma.fiscalYear.create({
+      data: { organizationId: other.orgId, label: '2082/83', startDate: new Date('2025-07-16'), endDate: new Date('2026-07-15') },
+    });
+    await prisma.document.create({
+      data: {
+        organizationId: other.orgId, fiscalYearId: otherFy.id, docType: 'INVOICE', docDate: new Date('2025-11-01'), postingDate: new Date('2025-11-01'),
+        partyId: otherParty.id, status: 'POSTED', grandTotal: 999, outstandingAmount: 999,
+      },
+    });
+    await prisma.document.create({
+      data: {
+        organizationId: other.orgId, fiscalYearId: otherFy.id, docType: 'RECEIPT', docDate: new Date('2025-11-01'), postingDate: new Date('2025-11-01'),
+        partyId: otherParty.id, status: 'POSTED', grandTotal: 333, outstandingAmount: 333,
+      },
+    });
+
+    const res = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
+    expect(res.body.rows.find((r) => r.partyId === otherParty.id)).toBeUndefined();
+    expect(res.body.integrity.balanced).toBe(true);
   });
 });
 
