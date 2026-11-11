@@ -2,7 +2,7 @@ import { prisma } from '../../db/client.js';
 import { sumLines } from '../accounting/line-math.js';
 import { resolveLines, toDocumentLineData } from '../accounting/document-lines.js';
 import { findFiscalYearForDate } from '../accounting/fiscal-year.js';
-import { notFound, conflict } from '../accounting/errors.js';
+import { notFound, conflict, businessRule } from '../accounting/errors.js';
 import { addDays } from './add-days.js';
 
 // Live totals for the invoice editor — same recomputation as create/update,
@@ -12,10 +12,19 @@ export async function previewInvoice(actor, { lines: lineInputs }) {
   return { lines, totals: sumLines(lines) };
 }
 
+// Mirror of Bills' loadSupplier: an Invoice may only be raised against a Customer.
+async function loadCustomer(tx, organizationId, partyId) {
+  const party = await tx.party.findFirst({ where: { id: partyId, organizationId } });
+  if (!party) throw notFound('Party not found');
+  if (party.type !== 'CUSTOMER' && party.type !== 'BOTH') {
+    throw businessRule('party_not_customer', `${party.name} is not a Customer - Invoices can only be raised against a Customer`);
+  }
+  return party;
+}
+
 export async function createDraftInvoice(actor, input) {
   return prisma.$transaction(async (tx) => {
-    const party = await tx.party.findFirst({ where: { id: input.partyId, organizationId: actor.organizationId } });
-    if (!party) throw notFound('Party not found');
+    const party = await loadCustomer(tx, actor.organizationId, input.partyId);
 
     const docDate = new Date(input.docDate);
     const fiscalYear = await findFiscalYearForDate(tx, actor.organizationId, docDate);
@@ -62,9 +71,7 @@ export async function updateDraftInvoice(actor, documentId, expectedVersion, inp
 
     // Always load the real party — its creditDays drives the due date, so
     // assuming a default here would silently write the wrong one.
-    const partyId = input.partyId ?? existing.partyId;
-    const party = await tx.party.findFirst({ where: { id: partyId, organizationId: actor.organizationId } });
-    if (!party) throw notFound('Party not found');
+    const party = await loadCustomer(tx, actor.organizationId, input.partyId ?? existing.partyId);
 
     const docDate = input.docDate ? new Date(input.docDate) : existing.docDate;
     const fiscalYear = await findFiscalYearForDate(tx, actor.organizationId, docDate);

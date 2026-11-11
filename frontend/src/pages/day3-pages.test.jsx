@@ -144,6 +144,25 @@ describe('Day 3 invoice editor', () => {
     expect(screen.getByText('Description is required')).toBeInTheDocument();
   });
 
+  it('offers Customers and parties of both kinds, not Supplier-only parties', async () => {
+    server.use(
+      http.get('/api/v1/parties', () => HttpResponse.json([
+        party,
+        { ...party, id: 'b0000000-0000-4000-8000-000000000001', type: 'both', code: 'BOTH-1', name: 'Both Ways Ltd' },
+        { ...party, id: 'b0000000-0000-4000-8000-000000000002', type: 'supplier', code: 'SUP-1', name: 'Only A Supplier' },
+      ])),
+      http.get('/api/v1/accounts', () => HttpResponse.json([account])),
+      http.get('/api/v1/tax-codes', () => HttpResponse.json([taxCode])),
+    );
+
+    renderDay3('/invoices/new');
+    const select = await screen.findByLabelText('Customer');
+    const options = within(select).getAllByRole('option').map((o) => o.textContent);
+    expect(options.some((text) => text.includes('Himalayan Trek Supplies'))).toBe(true);
+    expect(options.some((text) => text.includes('Both Ways Ltd'))).toBe(true);
+    expect(options.some((text) => text.includes('Only A Supplier'))).toBe(false);
+  });
+
   it('previews valid lines before the invoice header is complete', async () => {
     const user = userEvent.setup();
     server.use(

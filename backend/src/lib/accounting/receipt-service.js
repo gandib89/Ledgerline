@@ -29,6 +29,9 @@ export async function postReceipt(actor, input, tx = prisma) {
     ]);
     if (!party) throw notFound('Party not found');
     if (!depositAccount) throw notFound('Deposit account not found');
+    if (!['CUSTOMER', 'BOTH'].includes(party.type)) {
+      throw businessRule('party_not_customer', `${party.name} is not a Customer - Receipts can only be taken from a Customer`);
+    }
 
     const fiscalYear = await findFiscalYearForDate(tx, actor.organizationId, docDate);
     const period = await assertPeriodOpen(tx, { organizationId: actor.organizationId, docDate });

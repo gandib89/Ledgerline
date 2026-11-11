@@ -304,6 +304,36 @@ describe('DELETE /invoices/:id', () => {
   });
 });
 
+describe('Invoices are raised against Customers only', () => {
+  const mkParty = (type, code) => prisma.party.create({ data: { organizationId: owner.orgId, type, code, name: `${type} ${code}`, creditDays: 10 } });
+  const create = (body) => request(app).post('/api/v1/invoices').set(owner.headers).send(body);
+
+  it('rejects a Supplier-only party on create with 422 party_not_customer and saves nothing', async () => {
+    const supplierOnly = await mkParty('SUPPLIER', 'SUP-INV');
+    const before = await prisma.document.count({ where: { organizationId: owner.orgId } });
+
+    const res = await create(invoiceBody({ partyId: supplierOnly.id }));
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('party_not_customer');
+    expect(await prisma.document.count({ where: { organizationId: owner.orgId } })).toBe(before);
+  });
+
+  it('accepts a party of type BOTH', async () => {
+    const both = await mkParty('BOTH', 'BOTH-INV');
+    expect((await create(invoiceBody({ partyId: both.id }))).status).toBe(201);
+  });
+
+  it('rejects moving a draft onto a Supplier-only party and leaves the draft unchanged', async () => {
+    const supplierOnly = await mkParty('SUPPLIER', 'SUP-INV2');
+    const draft = (await create(invoiceBody())).body;
+
+    const res = await request(app).patch(`/api/v1/invoices/${draft.id}`).set(owner.headers).send({ version: 0, partyId: supplierOnly.id, lines: invoiceBody().lines });
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('party_not_customer');
+    expect((await prisma.document.findUniqueOrThrow({ where: { id: draft.id } })).partyId).toBe(party.id);
+  });
+});
+
 describe('period locking, enforced at the API', () => {
   it('rejects posting into a locked period', async () => {
     const created = await request(app)
