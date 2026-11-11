@@ -66,14 +66,9 @@ These are gaps we know about and have chosen not to fix yet.
 
 - There is no endpoint to apply an Unapplied Amount later. A Receipt or Supplier Payment that is not fully allocated when it is posted stays partly unapplied. This affects both AR and AP.
 - Historical aging is not possible while reversal hard-deletes allocations. Once a payment is reversed, its allocations are gone, so an aging report for a past date cannot be rebuilt accurately.
-- Draft documents cannot be deleted.
-- Invoices accept parties of type Supplier only. A Bill correctly rejects Customer-only parties, but an Invoice does not reject Supplier-only ones.
-- A Receipt's deposit account is not restricted. It should be limited to bank accounts and Cash in Hand, the way a Supplier Payment's paid-from account is.
 - Reversals have no per-document-type audit events. Every reversal is logged as a journal entry reversal, not as an invoice, bill, receipt or payment reversal.
 - Existing audit action names mix tenses, for example `supplier_payment.posted` next to `journal_entry.reversal_posted`.
-- The audit trail page defaults to visible when permissions are missing, instead of defaulting to hidden.
 - The tenant extension fails open instead of throwing. If a query runs with no organization in the request context, it runs unscoped rather than raising an error.
 - The tenant extension does not cover `aggregate`, `groupBy`, `upsert` or `createMany`.
-- A fresh production database has no Role rows, because only the seed script creates them. Roles and permissions must be loaded some other way before anyone can be given access.
 - The audit log row is written after the HTTP response finishes, so an API client or test that reads the audit log immediately after a request can race it and miss the row. Poll for the row instead of reading once.
 - The generic error handler now returns `details` for any error that has a status and `details` set. This was introduced for `duplicate_supplier_reference` and now also appears on the banking `invalid_statement_rows` error. Clients should treat `details` as an optional field on any error response.

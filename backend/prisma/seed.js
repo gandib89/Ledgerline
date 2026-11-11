@@ -1,42 +1,8 @@
 import { prisma } from '../src/db/client.js';
 import { hashPassword } from '../src/lib/auth/password.js';
+import { ensureReferenceData, ROLE_PERMISSIONS } from '../src/lib/auth/reference-data.js';
 import { provisionStarterKit, STARTER_ACCOUNT_COUNT } from '../src/lib/orgs/starter-kit.js';
 import { seedDemoScenario } from './demo-data.js';
-
-const ROLES = ['Owner', 'Accountant', 'Clerk', 'Viewer'];
-
-const PERMISSIONS = [
-  'invoice.create',
-  'invoice.post',
-  'payment.create',
-  'journal.post',
-  'bank.reconcile',
-  'report.view',
-  'audit.view',
-  'org.manage',
-  'bill.create',
-  'bill.post',
-  'supplier_payment.create',
-];
-
-// plan §5's default matrix — who gets which permission
-const ROLE_PERMISSIONS = {
-  Owner: PERMISSIONS, // everything
-  Accountant: [
-    'invoice.create',
-    'invoice.post',
-    'payment.create',
-    'journal.post',
-    'bank.reconcile',
-    'report.view',
-    'audit.view',
-    'bill.create',
-    'bill.post',
-    'supplier_payment.create',
-  ],
-  Clerk: ['invoice.create', 'payment.create', 'report.view', 'bill.create'],
-  Viewer: ['report.view'],
-};
 
 // plan §14 — one narrator org plus a second org that exists purely so tenant
 // isolation is demonstrable rather than merely claimed.
@@ -72,37 +38,9 @@ const ORGS = [
 ];
 
 async function seedRolesAndPermissions() {
-  const roles = {};
-  for (const name of ROLES) {
-    roles[name] = await prisma.role.upsert({
-      where: { name },
-      update: {},
-      create: { name },
-    });
-  }
-
-  const permissions = {};
-  for (const code of PERMISSIONS) {
-    permissions[code] = await prisma.permission.upsert({
-      where: { code },
-      update: {},
-      create: { code },
-    });
-  }
-
-  for (const [roleName, codes] of Object.entries(ROLE_PERMISSIONS)) {
-    for (const code of codes) {
-      await prisma.rolePermission.upsert({
-        where: {
-          roleId_permissionId: { roleId: roles[roleName].id, permissionId: permissions[code].id },
-        },
-        update: {},
-        create: { roleId: roles[roleName].id, permissionId: permissions[code].id },
-      });
-    }
-  }
-
-  console.log(`Seeded ${ROLES.length} roles, ${PERMISSIONS.length} permissions`);
+  await ensureReferenceData(prisma);
+  const roles = Object.fromEntries((await prisma.role.findMany()).map((role) => [role.name, role]));
+  console.log(`Seeded ${Object.keys(ROLE_PERMISSIONS).length} roles`);
   return roles;
 }
 

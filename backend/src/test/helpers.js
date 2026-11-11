@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { prisma } from '../db/client.js';
+import { ensureReferenceData } from '../lib/auth/reference-data.js';
 
 // TRUNCATE, not DELETE: the immutability trigger blocks row-level DELETE on
 // JournalEntry/JournalLine, but TRUNCATE doesn't fire row-level triggers.
@@ -16,39 +17,10 @@ export async function resetDb() {
   `);
 }
 
-const ROLE_PERMISSIONS = {
-  Owner: [
-    'invoice.create', 'invoice.post', 'payment.create', 'journal.post',
-    'bank.reconcile', 'report.view', 'audit.view', 'org.manage',
-    'bill.create', 'bill.post', 'supplier_payment.create',
-  ],
-  Accountant: [
-    'invoice.create', 'invoice.post', 'payment.create', 'journal.post',
-    'bank.reconcile', 'report.view', 'audit.view',
-    'bill.create', 'bill.post', 'supplier_payment.create',
-  ],
-  Clerk: ['invoice.create', 'payment.create', 'report.view', 'bill.create'],
-  Viewer: ['report.view'],
-};
-
 /** Roles and permissions are global reference data, not tenant data. */
 export async function seedRoles() {
-  const roles = {};
-  for (const [name, codes] of Object.entries(ROLE_PERMISSIONS)) {
-    const role = await prisma.role.create({ data: { name } });
-    roles[name] = role;
-    for (const code of codes) {
-      const permission = await prisma.permission.upsert({
-        where: { code },
-        update: {},
-        create: { code },
-      });
-      await prisma.rolePermission.create({
-        data: { roleId: role.id, permissionId: permission.id },
-      });
-    }
-  }
-  return roles;
+  await ensureReferenceData();
+  return Object.fromEntries((await prisma.role.findMany()).map((role) => [role.name, role]));
 }
 
 /**
