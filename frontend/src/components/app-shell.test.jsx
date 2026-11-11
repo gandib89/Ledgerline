@@ -1,12 +1,15 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { HttpResponse, http } from 'msw';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider } from '../auth/AuthContext.jsx';
 import { getActiveOrganization, resetApiClient } from '../lib/api-client.js';
+import { server } from '../mocks/server.js';
 import { createAppQueryClient } from '../query-client.js';
 import { DashboardPage } from '../pages/DashboardPage.jsx';
+import { SuppliersPage } from '../pages/SuppliersPage.jsx';
 import { AppShell } from './AppShell.jsx';
 import { ToastProvider } from './ToastProvider.jsx';
 
@@ -43,6 +46,35 @@ describe('AppShell', () => {
     await waitFor(() => expect(getActiveOrganization()).toBe('org-sherpa'));
     expect(invalidate).toHaveBeenCalledWith();
     expect(await screen.findByRole('heading', { name: 'Financial overview' })).toBeInTheDocument();
+  });
+
+  it('sends the organization header on the first request of a page loaded directly', async () => {
+    const orgHeaders = [];
+    server.use(
+      http.get('/api/v1/parties', ({ request }) => {
+        orgHeaders.push(request.headers.get('X-Organization-Id'));
+        return HttpResponse.json([]);
+      }),
+    );
+
+    render(
+      <QueryClientProvider client={createAppQueryClient()}>
+        <MemoryRouter initialEntries={['/suppliers']}>
+          <ToastProvider>
+            <AuthProvider>
+              <Routes>
+                <Route element={<AppShell />}>
+                  <Route path="/suppliers" element={<SuppliersPage />} />
+                </Route>
+              </Routes>
+            </AuthProvider>
+          </ToastProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(orgHeaders.length).toBeGreaterThan(0));
+    expect(orgHeaders[0]).toBe('org-annapurna');
   });
 
   it('offers an accessible mobile navigation control', async () => {

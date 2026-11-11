@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context.js';
@@ -46,7 +46,9 @@ export function AppShell() {
   });
   const activeOrganizationId = selectedOrganizationId || organizations.data?.[0]?.id || '';
   const activeOrganization = organizations.data?.find(({ id }) => id === activeOrganizationId) ?? null;
-  useEffect(() => {
+  // Layout effect, not useEffect: every layout effect in the tree runs before any
+  // passive effect, so the header is set before a child page's first query fires.
+  useLayoutEffect(() => {
     if (activeOrganizationId) setActiveOrganization(activeOrganizationId);
   }, [activeOrganizationId]);
 

@@ -3,17 +3,19 @@ import { sumLines } from '../accounting/line-math.js';
 import { resolveLines, toDocumentLineData } from '../accounting/document-lines.js';
 import { findFiscalYearForDate } from '../accounting/fiscal-year.js';
 import { notFound, conflict, businessRule } from '../accounting/errors.js';
+import { CASH_IN_HAND_CODE } from '../accounting/chart-of-accounts.js';
 import { addDays } from './add-days.js';
 import { dec } from '../money.js';
 
 // Bill lines may only hit EXPENSE or ASSET accounts that are neither control
 // nor bank accounts: a purchase must never post straight to AP, VAT or cash.
+// Cash in Hand is not flagged as a bank account, so it is excluded by code.
 function checkBillLineAccount(account) {
   const allowedType = account.type === 'EXPENSE' || account.type === 'ASSET';
-  if (!allowedType || account.isControlAccount || account.isBankAccount) {
+  if (!allowedType || account.isControlAccount || account.isBankAccount || account.code === CASH_IN_HAND_CODE) {
     throw businessRule(
       'bill_line_account_not_allowed',
-      `Account ${account.code} cannot be used on a Bill line — only expense or asset accounts that are not control or bank accounts`,
+      `Account ${account.code} cannot be used on a Bill line — only expense or asset accounts that are not control, bank or cash accounts`,
     );
   }
 }
