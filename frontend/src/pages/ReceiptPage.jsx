@@ -7,6 +7,7 @@ import { useToast } from '../components/toast-context.js';
 import { apiRequest } from '../lib/api-client.js';
 import { fromCents, isAllocationValid, remainingAmount, sumAmounts, toCents } from '../lib/amount.js';
 
+const CASH_IN_HAND_CODE = '1010';
 const emptyForm = { partyId: '', docDate: '', depositAccountId: '', amount: '', referenceNo: '', notes: '' };
 
 function journalIsBalanced(journal) {
@@ -99,7 +100,7 @@ export function ReceiptPage() {
   const loadError = parties.error ?? accounts.error;
   if (loadError) return <AsyncState tone="error" title="Receipt workspace unavailable" message={loadError.message} />;
 
-  const bankAccounts = accounts.data.filter((account) => account.isBankAccount && account.isActive);
+  const depositAccounts = accounts.data.filter((account) => account.isActive && (account.isBankAccount || account.code === CASH_IN_HAND_CODE));
   const canCreate = activeOrganization?.permissions?.includes('payment.create');
 
   return (
@@ -124,7 +125,7 @@ export function ReceiptPage() {
             <div className="field-grid">
               <label>Customer<select aria-invalid={Boolean(errors.partyId)} value={form.partyId} onChange={(event) => update('partyId', event.target.value)}><option value="">Select customer</option>{parties.data.filter((party) => party.type === 'customer' && party.isActive).map((party) => <option key={party.id} value={party.id}>{party.code} - {party.name}</option>)}</select>{errors.partyId && <span className="field-error" role="alert">{errors.partyId}</span>}</label>
               <label>Receipt date<input type="date" aria-invalid={Boolean(errors.docDate)} value={form.docDate} onChange={(event) => update('docDate', event.target.value)} />{errors.docDate && <span className="field-error" role="alert">{errors.docDate}</span>}</label>
-              <label>Deposit account<select aria-invalid={Boolean(errors.depositAccountId)} value={form.depositAccountId} onChange={(event) => update('depositAccountId', event.target.value)}><option value="">Select bank account</option>{bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} - {account.name}</option>)}</select>{errors.depositAccountId && <span className="field-error" role="alert">{errors.depositAccountId}</span>}</label>
+              <label>Deposit account<select aria-invalid={Boolean(errors.depositAccountId)} value={form.depositAccountId} onChange={(event) => update('depositAccountId', event.target.value)}><option value="">Select bank account or cash</option>{depositAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} - {account.name}</option>)}</select>{errors.depositAccountId && <span className="field-error" role="alert">{errors.depositAccountId}</span>}</label>
               <label>Amount received<input inputMode="decimal" aria-invalid={Boolean(errors.amount)} value={form.amount} onChange={(event) => update('amount', event.target.value)} />{errors.amount && <span className="field-error" role="alert">{errors.amount}</span>}</label>
               <label>Reference<input value={form.referenceNo} onChange={(event) => update('referenceNo', event.target.value)} /></label>
               <label>Notes<input value={form.notes} onChange={(event) => update('notes', event.target.value)} /></label>

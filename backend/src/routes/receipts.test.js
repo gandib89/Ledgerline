@@ -152,3 +152,29 @@ describe('Receipt party', () => {
     expect(res.status).toBe(201);
   });
 });
+
+describe('Receipt deposit account', () => {
+  const receipt = (depositAccountId) => request(app).post('/api/v1/receipts').set(owner.headers).send({
+    partyId: party.id, docDate: '2025-07-21', depositAccountId, amount: 10, allocations: [],
+  });
+  const receiptCount = () => prisma.document.count({ where: { organizationId: owner.orgId, docType: 'RECEIPT' } });
+
+  it('refuses an account that is neither bank-flagged nor Cash in Hand, and posts nothing', async () => {
+    const ar = await prisma.account.findFirstOrThrow({ where: { organizationId: owner.orgId, code: '1100' } });
+    const before = await receiptCount();
+    for (const accountId of [salesAccount.id, ar.id]) {
+      const res = await receipt(accountId);
+      expect(res.status).toBe(422);
+      expect(res.body.error.code).toBe('invalid_deposit_account');
+    }
+    expect(await receiptCount()).toBe(before);
+  });
+
+  it('accepts a bank-flagged account and Cash in Hand (1010)', async () => {
+    const cash = await prisma.account.create({ data: { organizationId: owner.orgId, code: '1010', name: 'Cash in Hand', type: 'ASSET' } });
+    expect((await receipt(bankAccount.id)).status).toBe(201);
+    const res = await receipt(cash.id);
+    expect(res.status).toBe(201);
+    expect(res.body.journalEntry.lines.find((l) => l.accountId === cash.id)).toMatchObject({ debit: '10.00' });
+  });
+});

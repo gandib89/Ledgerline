@@ -4,7 +4,7 @@ import { POSTING_RULES } from './posting-rules.js';
 import { nextDocNumber, nextEntryNumber } from './document-numbering.js';
 import { assertPeriodOpen } from './period-lock.js';
 import { findFiscalYearForDate } from './fiscal-year.js';
-import { AR_ACCOUNT_CODE } from './chart-of-accounts.js';
+import { AR_ACCOUNT_CODE, CASH_IN_HAND_CODE } from './chart-of-accounts.js';
 import { notFound, businessRule, internal } from './errors.js';
 import { add, sub, eq, dec, isZero } from '../money.js';
 
@@ -31,6 +31,10 @@ export async function postReceipt(actor, input, tx = prisma) {
     if (!depositAccount) throw notFound('Deposit account not found');
     if (!['CUSTOMER', 'BOTH'].includes(party.type)) {
       throw businessRule('party_not_customer', `${party.name} is not a Customer - Receipts can only be taken from a Customer`);
+    }
+
+    if (!depositAccount.isBankAccount && depositAccount.code !== CASH_IN_HAND_CODE) {
+      throw businessRule('invalid_deposit_account', 'A Receipt can only be deposited to a bank account or Cash in Hand');
     }
 
     const fiscalYear = await findFiscalYearForDate(tx, actor.organizationId, docDate);
