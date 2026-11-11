@@ -50,7 +50,8 @@ function formFromBill(bill) {
 }
 
 // A Bill line may only use expense or asset accounts that are neither control nor bank accounts.
-const isBillAccount = (account) => account.isActive && !account.isControlAccount && !account.isBankAccount;
+// Cash in Hand (1010) is not flagged as a bank account but may not carry a Bill line either.
+const isBillAccount = (account) => account.isActive && !account.isControlAccount && !account.isBankAccount && account.code !== '1010';
 
 export function BillEditorPage() {
   const { id } = useParams();

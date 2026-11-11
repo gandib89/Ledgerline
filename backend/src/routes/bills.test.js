@@ -161,12 +161,14 @@ describe('POST /bills', () => {
     expect(bad.body.error.code).toBe('party_not_supplier');
   });
 
-  it('accepts expense and asset lines and rejects revenue, control, bank and liability accounts', async () => {
+  it('accepts expense and asset lines and rejects revenue, control, bank, cash and liability accounts', async () => {
     const mk = (code, type, extra = {}) => prisma.account.create({ data: { organizationId: owner.orgId, code, name: `Acct ${code}`, type, ...extra } });
     const revenue = await mk('4900', 'REVENUE');
     const controlExpense = await mk('5900', 'EXPENSE', { isControlAccount: true });
     const bank = await mk('1090', 'ASSET', { isBankAccount: true });
     const liability = await mk('2900', 'LIABILITY');
+    // Cash in Hand is not flagged as a bank account, but a Bill must never debit cash.
+    const cashInHand = await mk('1010', 'ASSET');
 
     const ok = await post(owner.headers, billBody({
       referenceNo: 'LINES-OK',
@@ -178,7 +180,7 @@ describe('POST /bills', () => {
     expect(ok.status).toBe(201);
     expect(ok.body.grandTotal).toBe('50100.00');
 
-    for (const bad of [revenue, controlExpense, bank, liability]) {
+    for (const bad of [revenue, controlExpense, bank, liability, cashInHand]) {
       const res = await post(owner.headers, billBody({
         referenceNo: `LINES-${bad.code}`,
         lines: [{ accountId: bad.id, description: 'x', quantity: 1, unitPrice: 1 }],

@@ -27,6 +27,7 @@ const accounts = [
   account(ASSET_ID, '1500', 'Equipment', 'ASSET'),
   account(CONTROL_ID, '1210', 'Prepaid Control', 'ASSET', { isControlAccount: true }),
   account(BANK_ID, '1020', 'Bank - Nabil', 'ASSET', { isBankAccount: true }),
+  account('acct-cash', '1010', 'Cash in Hand', 'ASSET'),
 ];
 const taxCode = { id: TAX_ID, code: 'VAT13', name: 'VAT 13%', rate: '0.1300', type: 'VAT', isActive: true };
 
@@ -171,7 +172,7 @@ describe('Bill editor', () => {
     expect(screen.getByText('Posting date cannot be before bill date')).toBeInTheDocument();
   });
 
-  it('offers only suppliers and expense or asset accounts that are neither control nor bank', async () => {
+  it('offers only suppliers and expense or asset accounts that are not control, bank or cash', async () => {
     renderBills('/bills/new');
 
     const account = await screen.findByLabelText('Line 1 account');
