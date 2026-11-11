@@ -6,7 +6,7 @@ import { resolveTenant } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
 import { createPartySchemas } from '../../../shared/party-schema.js';
 import { serializeTaxCode } from './day3-contracts.js';
-import { notFound } from '../lib/accounting/errors.js';
+import { notFound, conflict } from '../lib/accounting/errors.js';
 import { createFiscalYearWithPeriods, nextFiscalYearWindow } from '../lib/orgs/starter-kit.js';
 
 const router = Router();
@@ -141,9 +141,18 @@ router.get('/parties', authorize('report.view'), async (req, res, next) => {
 router.post('/parties', authorize('org.manage'), async (req, res, next) => {
   try {
     const { type, ...rest } = createPartySchema.parse(req.body);
-    const party = await prisma.party.create({
-      data: { ...rest, type: type.toUpperCase() },
-    });
+    let party;
+    try {
+      party = await prisma.party.create({
+        data: { ...rest, type: type.toUpperCase() },
+      });
+    } catch (err) {
+      // (organizationId, code) is unique: a reused code is the caller's mistake, not a server fault.
+      if (err.code === 'P2002') {
+        throw conflict('duplicate_party_code', `A party with code ${rest.code} already exists`);
+      }
+      throw err;
+    }
 
     req.auditEntry = {
       action: 'party.create',
