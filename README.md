@@ -64,7 +64,6 @@ which is why the plan treats it as conditional rather than required.
 
 These are gaps we know about and have chosen not to fix yet.
 
-- There is no endpoint to apply an Unapplied Amount later. A Receipt or Supplier Payment that is not fully allocated when it is posted stays partly unapplied. This affects both AR and AP.
 - Historical aging is not possible while reversal hard-deletes allocations. Once a payment is reversed, its allocations are gone, so an aging report for a past date cannot be rebuilt accurately.
 - Draft documents cannot be deleted.
 - Invoices accept parties of type Supplier only. A Bill correctly rejects Customer-only parties, but an Invoice does not reject Supplier-only ones.

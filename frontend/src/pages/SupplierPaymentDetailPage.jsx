@@ -1,13 +1,14 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import { AsyncState } from '../components/AsyncState.jsx';
+import { ApplyUnappliedPanel } from '../components/ApplyUnappliedPanel.jsx';
 import { Money } from '../components/Money.jsx';
 import { apiRequest } from '../lib/api-client.js';
 import { JournalPanel } from './InvoiceDetailPage.jsx';
 
 export function SupplierPaymentDetailPage() {
   const { id } = useParams();
-  const { activeOrganizationId } = useOutletContext();
+  const { activeOrganizationId, activeOrganization } = useOutletContext();
   const payment = useQuery({ queryKey: ['supplier-payment', activeOrganizationId, id], queryFn: () => apiRequest(`/supplier-payments/${id}`), enabled: Boolean(activeOrganizationId && id) });
   const parties = useQuery({ queryKey: ['parties', activeOrganizationId, 'supplier-payment-detail'], queryFn: () => apiRequest('/parties?type=supplier&page=1'), enabled: Boolean(activeOrganizationId) });
   const accounts = useQuery({ queryKey: ['accounts', activeOrganizationId], queryFn: () => apiRequest('/accounts'), enabled: Boolean(activeOrganizationId) });
@@ -33,6 +34,7 @@ export function SupplierPaymentDetailPage() {
       <section className="report-surface"><div className="section-heading"><div><h2>Bill allocations</h2><p>Where this payment was applied.</p></div></div>{document.allocations.length === 0 ? <AsyncState tone="empty" title="Unapplied payment" message="This payment remains as an advance to the supplier." /> : <div className="table-scroll"><table className="data-table"><thead><tr><th>Bill</th><th>Allocated at</th><th className="numeric">Amount</th></tr></thead><tbody>{document.allocations.map((allocation, index) => <tr key={allocation.billId}><td><Link className="table-link" to={`/bills/${allocation.billId}`}>{billQueries[index]?.data?.docNo ?? allocation.billId}</Link></td><td>{allocation.allocatedAt ? new Date(allocation.allocatedAt).toLocaleString() : '—'}</td><td className="numeric"><Money value={allocation.amount} /></td></tr>)}</tbody></table></div>}</section>
       <aside className="receipt-totals receipt-detail-totals"><div><span>Paid</span><Money value={document.grandTotal} /></div><div><span>Applied</span><Money value={document.allocatedAmount} /></div><div><span>Unapplied</span><Money value={document.outstandingAmount} /></div><p>{document.notes ?? 'No payment notes.'}</p></aside>
     </div>
+    <ApplyUnappliedPanel kind="supplierPayment" organizationId={activeOrganizationId} permissions={activeOrganization?.permissions} payment={document} />
     {document.journalEntryId && (journal.isPending ? <AsyncState title="Loading journal" message="Opening the permanent ledger entry." />
       : journal.isError ? <AsyncState tone="error" title="Journal unavailable" message={journal.error.message} />
         : <JournalPanel journal={journal.data} accountNames={accountNames} />)}
