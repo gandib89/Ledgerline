@@ -286,6 +286,66 @@ describe('Day 3 invoice detail and posting', () => {
   });
 });
 
+describe('Day 3 invoice detail: deleting a draft', () => {
+  function serveDraft() {
+    server.use(
+      http.get('/api/v1/invoices/:id', () => HttpResponse.json(draftInvoice)),
+      http.get('/api/v1/parties', () => HttpResponse.json([party])),
+      http.get('/api/v1/accounts', () => HttpResponse.json([account])),
+    );
+  }
+
+  it('confirms, deletes the draft and returns to the invoice list', async () => {
+    const user = userEvent.setup();
+    let deleted = null;
+    serveDraft();
+    server.use(http.delete('/api/v1/invoices/:id', ({ params }) => {
+      deleted = params.id;
+      return new HttpResponse(null, { status: 204 });
+    }));
+
+    renderDay3(`/invoices/${INVOICE_ID}`);
+    await user.click(await screen.findByRole('button', { name: 'Delete draft' }));
+    expect(deleted).toBeNull();
+    await user.click(within(screen.getByRole('dialog', { name: 'Delete draft invoice' })).getByRole('button', { name: 'Confirm delete' }));
+
+    expect(await screen.findByRole('heading', { name: 'Invoices' })).toBeInTheDocument();
+    expect(deleted).toBe(INVOICE_ID);
+  });
+
+  it('cancels without deleting', async () => {
+    const user = userEvent.setup();
+    let called = false;
+    serveDraft();
+    server.use(http.delete('/api/v1/invoices/:id', () => { called = true; return new HttpResponse(null, { status: 204 }); }));
+
+    renderDay3(`/invoices/${INVOICE_ID}`);
+    await user.click(await screen.findByRole('button', { name: 'Delete draft' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Delete draft invoice' })).getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Delete draft invoice' })).not.toBeInTheDocument();
+    expect(called).toBe(false);
+  });
+
+  it('is hidden without invoice.create, with the permission list missing, and on a posted invoice', async () => {
+    serveDraft();
+    const first = renderDay3(`/invoices/${INVOICE_ID}`, ['report.view', 'invoice.post']);
+    expect(await screen.findByText('Draft invoice')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete draft' })).not.toBeInTheDocument();
+    first.unmount();
+
+    const second = renderDay3(`/invoices/${INVOICE_ID}`, null);
+    expect(await screen.findByText('Draft invoice')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete draft' })).not.toBeInTheDocument();
+    second.unmount();
+
+    server.use(http.get('/api/v1/invoices/:id', () => HttpResponse.json({ ...draftInvoice, status: 'posted', docNo: 'INV-2082-0001' })));
+    renderDay3(`/invoices/${INVOICE_ID}`);
+    expect(await screen.findByText('INV-2082-0001')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete draft' })).not.toBeInTheDocument();
+  });
+});
+
 describe('Day 3 Trial Balance', () => {
   it('renders ledger rows, totals and a textual zero-difference result', async () => {
     server.use(http.get('/api/v1/reports/trial-balance', () => HttpResponse.json({

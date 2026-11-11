@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import { prisma } from '../db/client.js';
@@ -247,6 +247,60 @@ describe('GET /invoices/:id/payments', () => {
         amount: '50000.00',
       }),
     ]);
+  });
+});
+
+describe('DELETE /invoices/:id', () => {
+  const del = (headers, id) => request(app).delete(`/api/v1/invoices/${id}`).set(headers);
+  const draft = async () => (await request(app).post('/api/v1/invoices').set(owner.headers).send(invoiceBody())).body;
+
+  it('deletes a draft with its lines and audits invoice.deleted', async () => {
+    const invoice = await draft();
+
+    const res = await del(owner.headers, invoice.id);
+    expect(res.status).toBe(204);
+    expect(await prisma.document.count({ where: { id: invoice.id } })).toBe(0);
+    expect(await prisma.documentLine.count({ where: { documentId: invoice.id } })).toBe(0);
+    expect((await request(app).get(`/api/v1/invoices/${invoice.id}`).set(owner.headers)).status).toBe(404);
+
+    await vi.waitFor(async () => {
+      const events = await prisma.auditLog.findMany({ where: { organizationId: owner.orgId, entityId: invoice.id }, orderBy: { createdAt: 'asc' } });
+      expect(events.map((e) => e.action)).toEqual(['invoice.create', 'invoice.deleted']);
+    });
+  });
+
+  it('409s not_draft for a posted invoice and keeps it', async () => {
+    const invoice = await draft();
+    await request(app).post(`/api/v1/invoices/${invoice.id}/post`).set(owner.headers).send();
+
+    const res = await del(owner.headers, invoice.id);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('not_draft');
+    expect(await prisma.document.count({ where: { id: invoice.id } })).toBe(1);
+  });
+
+  it("404s another organization's invoice, a Bill id and an unknown id", async () => {
+    const bob = await makeUserWithOrg(app, 'bob-del@invoices.test', 'Bob Delete Co');
+    const invoice = await draft();
+    const { fiscalYearId } = await prisma.document.findUniqueOrThrow({ where: { id: invoice.id } });
+    const bill = await prisma.document.create({
+      data: {
+        organizationId: owner.orgId, fiscalYearId, docType: 'BILL', docDate: new Date('2025-07-20'),
+        postingDate: new Date('2025-07-20'), partyId: party.id, referenceNo: 'X-1', status: 'DRAFT',
+      },
+    });
+
+    expect((await del(bob.headers, invoice.id)).status).toBe(404);
+    expect((await del(owner.headers, bill.id)).status).toBe(404);
+    expect((await del(owner.headers, '00000000-0000-0000-0000-000000000000')).status).toBe(404);
+    expect(await prisma.document.count({ where: { id: { in: [invoice.id, bill.id] } } })).toBe(2);
+  });
+
+  it('lets a Clerk delete a draft and refuses a Viewer', async () => {
+    const invoice = await draft();
+    expect((await del(viewer, invoice.id)).status).toBe(403);
+    expect(await prisma.document.count({ where: { id: invoice.id } })).toBe(1);
+    expect((await del(clerk, invoice.id)).status).toBe(204);
   });
 });
 

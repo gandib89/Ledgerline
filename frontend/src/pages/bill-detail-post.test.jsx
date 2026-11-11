@@ -54,6 +54,7 @@ function renderDetail(permissions = ['report.view', 'bill.create', 'bill.post'])
           <Routes>
             <Route element={<Outlet context={{ activeOrganizationId: 'org-1', activeOrganization: { id: 'org-1', name: 'Annapurna', permissions } }} />}>
               <Route path="/bills/:id" element={<BillDetailPage />} />
+              <Route path="/bills" element={<h1>Bills list</h1>} />
             </Route>
           </Routes>
         </ToastProvider>
@@ -229,5 +230,73 @@ describe('Bill detail: payments applied', () => {
     expect(await screen.findByText('Draft bill')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Payments applied' })).not.toBeInTheDocument();
     expect(asked).toBe(false);
+  });
+});
+
+describe('Bill detail: deleting a draft', () => {
+  it('confirms, deletes the draft and returns to the Bills list', async () => {
+    const user = userEvent.setup();
+    let deleted = null;
+    serve(draftBill);
+    server.use(http.delete('/api/v1/bills/:id', ({ params }) => {
+      deleted = params.id;
+      return new HttpResponse(null, { status: 204 });
+    }));
+    renderDetail();
+
+    await user.click(await screen.findByRole('button', { name: 'Delete draft' }));
+    expect(deleted).toBeNull();
+    const dialog = screen.getByRole('dialog', { name: 'Delete draft bill' });
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm delete' }));
+
+    expect(await screen.findByRole('heading', { name: 'Bills list' })).toBeInTheDocument();
+    expect(deleted).toBe(BILL_ID);
+  });
+
+  it('cancels without deleting', async () => {
+    const user = userEvent.setup();
+    let called = false;
+    serve(draftBill);
+    server.use(http.delete('/api/v1/bills/:id', () => { called = true; return new HttpResponse(null, { status: 204 }); }));
+    renderDetail();
+
+    await user.click(await screen.findByRole('button', { name: 'Delete draft' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Delete draft bill' })).getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Delete draft bill' })).not.toBeInTheDocument();
+    expect(called).toBe(false);
+  });
+
+  it('stays on the page and shows the server message when the delete fails', async () => {
+    const user = userEvent.setup();
+    serve(draftBill);
+    server.use(http.delete('/api/v1/bills/:id', () => HttpResponse.json(
+      { error: { code: 'not_draft', message: 'Bill is not a draft' } }, { status: 409 },
+    )));
+    renderDetail();
+
+    await user.click(await screen.findByRole('button', { name: 'Delete draft' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Delete draft bill' })).getByRole('button', { name: 'Confirm delete' }));
+
+    expect((await screen.findAllByText(/Bill is not a draft/)).length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: 'Draft bill' })).toBeInTheDocument();
+  });
+
+  it('is hidden without bill.create, with the permission list missing, and on a posted Bill', async () => {
+    serve(draftBill);
+    const first = renderDetail(['report.view', 'bill.post']);
+    expect(await screen.findByText('Draft bill')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete draft' })).not.toBeInTheDocument();
+    first.unmount();
+
+    const second = renderDetail(null);
+    expect(await screen.findByText('Draft bill')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete draft' })).not.toBeInTheDocument();
+    second.unmount();
+
+    serve(postedBill);
+    renderDetail();
+    expect(await screen.findByRole('heading', { name: 'BILL-2082-0001' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete draft' })).not.toBeInTheDocument();
   });
 });

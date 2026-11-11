@@ -167,6 +167,11 @@ registry.registerPath({
   responses: { 200: { description: 'OK', ...json(invoice) }, 409: errorResponse },
 });
 registry.registerPath({
+  method: 'delete', path: '/api/v1/invoices/{id}', tags: ['Invoices'], summary: 'Delete a draft invoice (409 not_draft once posted)',
+  security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }) },
+  responses: { 204: { description: 'Deleted' }, 404: errorResponse, 409: errorResponse },
+});
+registry.registerPath({
   method: 'post', path: '/api/v1/invoices/{id}/post', tags: ['Invoices'], summary: 'Post a draft invoice — creates its journal entry',
   security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }) },
   responses: { 200: { description: 'OK', ...json(z.object({ invoice, journalEntry })) }, 422: errorResponse },
@@ -200,6 +205,11 @@ registry.registerPath({
   method: 'patch', path: '/api/v1/bills/{id}', tags: ['Bills'], summary: 'Edit a draft Bill (409 not_draft once posted)',
   security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }), body: { content: { 'application/json': { schema: z.object({ ...billBodyFields, version: z.number() }).partial({ partyId: true, referenceNo: true, docDate: true }) } } } },
   responses: { 200: { description: 'OK', ...json(bill) }, 404: errorResponse, 409: errorResponse },
+});
+registry.registerPath({
+  method: 'delete', path: '/api/v1/bills/{id}', tags: ['Bills'], summary: 'Delete a draft Bill, freeing its Supplier Reference (409 not_draft once posted)',
+  security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }) },
+  responses: { 204: { description: 'Deleted' }, 404: errorResponse, 409: errorResponse },
 });
 registry.registerPath({
   method: 'post', path: '/api/v1/bills/{id}/post', tags: ['Bills'], summary: 'Post a draft Bill — creates its journal entry and BILL number (bill.post)',
