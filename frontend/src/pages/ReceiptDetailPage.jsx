@@ -1,12 +1,13 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import { AsyncState } from '../components/AsyncState.jsx';
+import { ApplyUnappliedPanel } from '../components/ApplyUnappliedPanel.jsx';
 import { Money } from '../components/Money.jsx';
 import { apiRequest } from '../lib/api-client.js';
 
 export function ReceiptDetailPage() {
   const { id } = useParams();
-  const { activeOrganizationId } = useOutletContext();
+  const { activeOrganizationId, activeOrganization } = useOutletContext();
   const receipt = useQuery({ queryKey: ['receipt', activeOrganizationId, id], queryFn: () => apiRequest(`/receipts/${id}`), enabled: Boolean(activeOrganizationId && id) });
   const parties = useQuery({ queryKey: ['parties', activeOrganizationId, 'receipt-detail'], queryFn: () => apiRequest('/parties?page=1'), enabled: Boolean(activeOrganizationId) });
   const invoiceQueries = useQueries({ queries: (receipt.data?.allocations ?? []).map((allocation) => ({ queryKey: ['invoice', activeOrganizationId, allocation.invoiceId], queryFn: () => apiRequest(`/invoices/${allocation.invoiceId}`), enabled: Boolean(activeOrganizationId) })) });
@@ -22,5 +23,6 @@ export function ReceiptDetailPage() {
       <section className="report-surface"><div className="section-heading"><div><h2>Invoice allocations</h2><p>Where this customer payment was applied.</p></div></div>{document.allocations.length === 0 ? <AsyncState tone="empty" title="Unallocated receipt" message="This payment remains as a customer advance." /> : <div className="table-scroll"><table className="data-table"><thead><tr><th>Invoice</th><th>Allocated at</th><th className="numeric">Amount</th></tr></thead><tbody>{document.allocations.map((allocation, index) => <tr key={allocation.invoiceId}><td><Link className="table-link" to={`/invoices/${allocation.invoiceId}`}>{invoiceQueries[index]?.data?.docNo ?? allocation.invoiceId}</Link></td><td>{allocation.allocatedAt ? new Date(allocation.allocatedAt).toLocaleString() : '—'}</td><td className="numeric"><Money value={allocation.amount} /></td></tr>)}</tbody></table></div>}</section>
       <aside className="receipt-totals receipt-detail-totals"><div><span>Received</span><Money value={document.grandTotal} /></div><div><span>Allocated</span><Money value={document.allocatedAmount} /></div><div><span>Unallocated</span><Money value={document.outstandingAmount} /></div><p>{document.notes ?? 'No receipt notes.'}</p></aside>
     </div>
+    <ApplyUnappliedPanel kind="receipt" organizationId={activeOrganizationId} permissions={activeOrganization?.permissions} payment={document} />
   </div>;
 }

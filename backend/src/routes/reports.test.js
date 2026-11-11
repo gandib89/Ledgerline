@@ -108,6 +108,66 @@ describe('GET /reports/ar-aging', () => {
     expect(after.body.integrity.balanced).toBe(true);
   });
 
+  describe('applying an Unapplied Amount later (sub-ledger shift)', () => {
+    let keySeq = 0;
+    const applyLater = async (receiptId, invoiceId, amount) => {
+      keySeq += 1;
+      const res = await request(app).post(`/api/v1/receipts/${receiptId}/allocations`).set(owner.headers)
+        .set('Idempotency-Key', `ar-apply-later-${keySeq}`).send({ allocations: [{ invoiceId, amount }] });
+      expect(res.status).toBe(201);
+    };
+    const agingFor = async (partyId) => {
+      const res = await request(app).get('/api/v1/reports/ar-aging').set(owner.headers);
+      return { row: res.body.rows.find((r) => r.partyId === partyId), body: res.body };
+    };
+    const mkCustomer = (code) => prisma.party.create({ data: { organizationId: owner.orgId, type: 'CUSTOMER', code, name: code, creditDays: 30 } });
+    const invoiceFor = async (partyId, docDate, amount) => {
+      const created = await request(app).post('/api/v1/invoices').set(owner.headers).send({
+        partyId, docDate, lines: [{ accountId: salesAccount.id, description: 'Goods', quantity: 1, unitPrice: amount }],
+      });
+      await request(app).post(`/api/v1/invoices/${created.body.id}/post`).set(owner.headers).send();
+      return created.body.id;
+    };
+    const receiptFor = async (partyId, docDate, amount) => {
+      const bank = await prisma.account.findFirstOrThrow({ where: { organizationId: owner.orgId, code: '1020' } });
+      const res = await request(app).post('/api/v1/receipts').set(owner.headers).send({ partyId, docDate, depositAccountId: bank.id, amount, allocations: [] });
+      expect(res.status).toBe(201);
+      return res.body.receipt.id;
+    };
+
+    it('moves the amount from Unapplied to the Invoice and keeps the total equal to AR (1100)', async () => {
+      const customer = await mkCustomer('CUS-APPLY-1');
+      const invoice = await invoiceFor(customer.id, '2025-10-20', 2500); // due 2025-11-19 -> current
+      const receipt = await receiptFor(customer.id, '2025-11-10', 1000);
+      const before = await agingFor(customer.id);
+      expect([before.row.buckets.current, before.row.unapplied, before.row.total]).toEqual(['2500.00', '-1000.00', '1500.00']);
+
+      await applyLater(receipt, invoice, '600.00');
+
+      const after = await agingFor(customer.id);
+      expect([after.row.buckets.current, after.row.unapplied, after.row.total]).toEqual(['1900.00', '-400.00', '1500.00']);
+      expect(after.body.totals.grandTotal).toBe(before.body.totals.grandTotal);
+      expect(after.body.integrity.balanced).toBe(true);
+    });
+
+    it('still reconciles when the later allocation crosses today in either direction', async () => {
+      const customer = await mkCustomer('CUS-APPLY-2');
+      const invoice = await invoiceFor(customer.id, '2025-10-20', 2500);
+      const futureReceipt = await receiptFor(customer.id, '2025-11-20', 1000); // ledger does not see it yet
+      await applyLater(futureReceipt, invoice, '700.00');
+      let aging = await agingFor(customer.id);
+      expect([aging.row.buckets.current, aging.row.unapplied, aging.row.total]).toEqual(['2500.00', '0.00', '2500.00']);
+      expect(aging.body.integrity.balanced).toBe(true);
+
+      const earlyReceipt = await receiptFor(customer.id, '2025-11-14', 1000);
+      const futureInvoice = await invoiceFor(customer.id, '2025-11-22', 900); // ledger does not see it yet
+      await applyLater(earlyReceipt, futureInvoice, '400.00');
+      aging = await agingFor(customer.id);
+      expect([aging.row.unapplied, aging.row.total]).toEqual(['-1000.00', '1500.00']);
+      expect(aging.body.integrity.balanced).toBe(true);
+    });
+  });
+
   it('rejects the asOf query parameter', async () => {
     const res = await request(app).get('/api/v1/reports/ar-aging?asOf=').set(owner.headers);
     expect(res.status).toBe(400);
@@ -325,6 +385,53 @@ describe('GET /reports/ap-aging', () => {
     expect(row.documents.map((d) => d.id)).toContain(bill);
     expect(row.total).toBe((Number(before) + 400).toFixed(2)); // +700 Bill, -300 payment, both still in the ledger
     expect(res.body.integrity.balanced).toBe(true);
+  });
+
+  describe('applying an Unapplied Amount later (sub-ledger shift)', () => {
+    let keySeq = 0;
+    const applyLater = async (paymentId, billId, amount) => {
+      keySeq += 1;
+      const res = await request(app).post(`/api/v1/supplier-payments/${paymentId}/allocations`).set(owner.headers)
+        .set('Idempotency-Key', `ap-apply-later-${keySeq}`).send({ allocations: [{ billId, amount }] });
+      expect(res.status).toBe(201);
+    };
+    const agingFor = async (partyId) => {
+      const res = await getAging();
+      return { row: res.body.rows.find((r) => r.partyId === partyId), body: res.body };
+    };
+    const mkSupplier = (code) => prisma.party.create({ data: { organizationId: owner.orgId, type: 'SUPPLIER', code, name: code, creditDays: 30 } });
+
+    it('moves the amount from Unapplied to the Bill and keeps the total equal to AP (2100)', async () => {
+      const supplier = await mkSupplier('SUP-APPLY-1');
+      const bill = await postBill(supplier.id, '2025-10-20', 2500); // due 2025-11-19 -> current
+      const payment = await payBill(supplier.id, '2025-11-10', 1000);
+      const before = await agingFor(supplier.id);
+      expect([before.row.buckets.current, before.row.unapplied, before.row.total]).toEqual(['2500.00', '-1000.00', '1500.00']);
+
+      await applyLater(payment, bill, '600.00');
+
+      const after = await agingFor(supplier.id);
+      expect([after.row.buckets.current, after.row.unapplied, after.row.total]).toEqual(['1900.00', '-400.00', '1500.00']);
+      expect(after.body.totals.grandTotal).toBe(before.body.totals.grandTotal);
+      expect(after.body.integrity.balanced).toBe(true);
+    });
+
+    it('still reconciles when the later allocation crosses today in either direction', async () => {
+      const supplier = await mkSupplier('SUP-APPLY-2');
+      const bill = await postBill(supplier.id, '2025-10-20', 2500);
+      const futurePayment = await payBill(supplier.id, '2025-11-20', 1000); // ledger does not see it yet
+      await applyLater(futurePayment, bill, '700.00');
+      let aging = await agingFor(supplier.id);
+      expect([aging.row.buckets.current, aging.row.unapplied, aging.row.total]).toEqual(['2500.00', '0.00', '2500.00']);
+      expect(aging.body.integrity.balanced).toBe(true);
+
+      const earlyPayment = await payBill(supplier.id, '2025-11-14', 1000);
+      const futureBill = await postBill(supplier.id, '2025-11-22', 900); // ledger does not see it yet
+      await applyLater(earlyPayment, futureBill, '400.00');
+      aging = await agingFor(supplier.id);
+      expect([aging.row.unapplied, aging.row.total]).toEqual(['-1000.00', '1500.00']);
+      expect(aging.body.integrity.balanced).toBe(true);
+    });
   });
 
   it('rejects the asOf query parameter', async () => {

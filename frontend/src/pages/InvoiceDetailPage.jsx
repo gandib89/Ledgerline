@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useOutletContext, useParams } from 'react-router-dom';
+import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { AsyncState } from '../components/AsyncState.jsx';
 import { Money } from '../components/Money.jsx';
 import { PaymentHistory } from '../components/PaymentHistory.jsx';
@@ -59,7 +59,9 @@ export function InvoiceDetailPage() {
   const { activeOrganizationId, activeOrganization } = useOutletContext();
   const queryClient = useQueryClient();
   const { notify } = useToast();
+  const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const invoice = useQuery({
     queryKey: ['invoice', activeOrganizationId, id],
@@ -101,6 +103,19 @@ export function InvoiceDetailPage() {
     }),
   });
 
+  const deleteDraft = useMutation({
+    mutationFn: () => apiRequest(`/invoices/${id}`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      notify({ title: 'Draft deleted', message: 'The draft invoice was deleted.', tone: 'success' });
+      navigate('/invoices');
+    },
+    onError: (error) => {
+      setDeleting(false);
+      notify({ title: 'Could not delete draft', message: error.message, tone: 'error' });
+    },
+  });
+
   if (!activeOrganizationId || invoice.isPending || parties.isPending || accounts.isPending) {
     return <AsyncState title="Loading invoice" message="Fetching the document and accounting references." />;
   }
@@ -111,6 +126,7 @@ export function InvoiceDetailPage() {
   const customer = parties.data.find((party) => party.id === document.partyId);
   const accountNames = Object.fromEntries(accounts.data.map((account) => [account.id, `${account.code} · ${account.name}`]));
   const canPost = activeOrganization?.permissions?.includes('invoice.post');
+  const canEdit = Boolean(activeOrganization?.permissions?.includes('invoice.create'));
   const displayedJournal = journal.data;
 
   return (
@@ -124,6 +140,7 @@ export function InvoiceDetailPage() {
         <div className="heading-actions">
           <Link className="secondary-button button-link" to="/invoices">Back to invoices</Link>
           {document.status === 'draft' && <Link className="secondary-button button-link" to={`/invoices/${id}/edit`}>Edit draft</Link>}
+          {document.status === 'draft' && canEdit && <button className="secondary-button" type="button" onClick={() => setDeleting(true)}>Delete draft</button>}
           {document.status === 'draft' && canPost && <button className="primary-button" type="button" onClick={() => setConfirming(true)}>Post invoice</button>}
           {['posted', 'partially_paid', 'paid'].includes(document.status) && canPost && <Link className="primary-button button-link" to={`/invoices/${id}/credit-note`}>Issue credit note</Link>}
         </div>
@@ -177,6 +194,22 @@ export function InvoiceDetailPage() {
             <div className="dialog-actions">
               <button autoFocus className="secondary-button" type="button" disabled={postInvoice.isPending} onClick={() => setConfirming(false)}>Cancel</button>
               <button className="primary-button" type="button" disabled={postInvoice.isPending} onClick={() => postInvoice.mutate()}>{postInvoice.isPending ? 'Posting…' : 'Confirm posting'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleting && (
+        <div className="dialog-backdrop">
+          <div className="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Delete draft invoice" onKeyDown={(event) => {
+            if (event.key === 'Escape' && !deleteDraft.isPending) setDeleting(false);
+          }}>
+            <p className="eyebrow">Discard draft</p>
+            <h2>Delete this draft invoice?</h2>
+            <p>The draft and its lines are removed for good. Nothing has been posted to the ledger, so no entry is affected.</p>
+            <div className="dialog-actions">
+              <button autoFocus className="secondary-button" type="button" disabled={deleteDraft.isPending} onClick={() => setDeleting(false)}>Cancel</button>
+              <button className="primary-button" type="button" disabled={deleteDraft.isPending} onClick={() => deleteDraft.mutate()}>{deleteDraft.isPending ? 'Deleting…' : 'Confirm delete'}</button>
             </div>
           </div>
         </div>

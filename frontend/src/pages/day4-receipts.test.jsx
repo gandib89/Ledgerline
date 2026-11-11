@@ -69,6 +69,27 @@ describe('Day 4 receipt allocation', () => {
     expect(submitted.allocations).toEqual([{ invoiceId, amount: '50000.00' }]);
   });
 
+  it('offers only bank accounts and Cash in Hand as the deposit account', async () => {
+    server.use(
+      http.get('/api/v1/parties', () => HttpResponse.json([{ id: partyId, code: 'CUS-001', name: 'Himalayan Trek Supplies', type: 'customer', isActive: true }])),
+      http.get('/api/v1/accounts', () => HttpResponse.json([
+        { id: bankAccountId, code: '1020', name: 'Nabil Bank', type: 'ASSET', isBankAccount: true, isActive: true },
+        { id: 'c0000000-0000-4000-8000-000000000001', code: '1010', name: 'Cash in Hand', type: 'ASSET', isBankAccount: false, isActive: true },
+        { id: 'c0000000-0000-4000-8000-000000000002', code: '4100', name: 'Sales Revenue', type: 'REVENUE', isBankAccount: false, isActive: true },
+        { id: 'c0000000-0000-4000-8000-000000000003', code: '1100', name: 'Accounts Receivable', type: 'ASSET', isBankAccount: false, isActive: true },
+        { id: 'c0000000-0000-4000-8000-000000000004', code: '1030', name: 'Closed Bank', type: 'ASSET', isBankAccount: true, isActive: false },
+      ])),
+    );
+
+    renderReceipt();
+    const deposit = await screen.findByLabelText('Deposit account');
+    expect(within(deposit).getByText(/Nabil Bank/)).toBeInTheDocument();
+    expect(within(deposit).getByText(/Cash in Hand/)).toBeInTheDocument();
+    expect(within(deposit).queryByText(/Sales Revenue/)).not.toBeInTheDocument();
+    expect(within(deposit).queryByText(/Accounts Receivable/)).not.toBeInTheDocument();
+    expect(within(deposit).queryByText(/Closed Bank/)).not.toBeInTheDocument();
+  });
+
   it('blocks an allocation above the invoice outstanding amount', async () => {
     const user = userEvent.setup();
     server.use(http.get('/api/v1/invoices', () => HttpResponse.json([{ id: invoiceId, docNo: 'INV-2082-0001', docDate: '2025-07-20', dueDate: '2025-08-19', partyId, status: 'posted', grandTotal: '113000.00', outstandingAmount: '113000.00' }])));

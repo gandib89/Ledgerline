@@ -40,7 +40,7 @@ function displayTime(value) {
 
 export function AuditTrailPage() {
   const { activeOrganizationId, activeOrganization } = useOutletContext();
-  const canView = activeOrganization?.permissions?.includes('audit.view') ?? true;
+  const canView = Boolean(activeOrganization?.permissions?.includes('audit.view'));
   const emptyFilters = { entityType: '', actorId: '', entityId: '' };
   const [draftFilters, setDraftFilters] = useState(emptyFilters);
   const [filters, setFilters] = useState(emptyFilters);

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useOutletContext, useParams } from 'react-router-dom';
+import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { AsyncState } from '../components/AsyncState.jsx';
 import { Money } from '../components/Money.jsx';
 import { useToast } from '../components/toast-context.js';
@@ -14,7 +14,9 @@ export function BillDetailPage() {
   const { activeOrganizationId, activeOrganization } = useOutletContext();
   const queryClient = useQueryClient();
   const { notify } = useToast();
+  const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [reversing, setReversing] = useState(false);
   const [reverseForm, setReverseForm] = useState({ reason: '', reversalDate: '' });
   const canEdit = Boolean(activeOrganization?.permissions?.includes('bill.create'));
@@ -62,6 +64,19 @@ export function BillDetailPage() {
     }),
   });
 
+  const deleteDraft = useMutation({
+    mutationFn: () => apiRequest(`/bills/${id}`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['bills'] });
+      notify({ title: 'Draft deleted', message: 'The draft bill was deleted.', tone: 'success' });
+      navigate('/bills');
+    },
+    onError: (error) => {
+      setDeleting(false);
+      notify({ title: 'Could not delete draft', message: error.message, tone: 'error' });
+    },
+  });
+
   const reverseBill = useMutation({
     mutationFn: (body) => apiRequest(`/journal-entries/${bill.data.journalEntryId}/reverse`, { method: 'POST', body }),
     onSuccess: async ({ reversal }) => {
@@ -99,6 +114,7 @@ export function BillDetailPage() {
         <div className="heading-actions">
           <Link className="secondary-button button-link" to="/bills">Back to bills</Link>
           {document.status === 'draft' && canEdit && <Link className="secondary-button button-link" to={`/bills/${id}/edit`}>Edit draft</Link>}
+          {document.status === 'draft' && canEdit && <button className="secondary-button" type="button" onClick={() => setDeleting(true)}>Delete draft</button>}
           {document.status === 'draft' && canPost && <button className="primary-button" type="button" onClick={() => setConfirming(true)}>Post bill</button>}
           {document.status === 'posted' && canReverse && <button className="secondary-button" type="button" onClick={() => setReversing(true)}>Reverse bill</button>}
         </div>
@@ -153,6 +169,22 @@ export function BillDetailPage() {
             <div className="dialog-actions">
               <button autoFocus className="secondary-button" type="button" disabled={postBill.isPending} onClick={() => setConfirming(false)}>Cancel</button>
               <button className="primary-button" type="button" disabled={postBill.isPending} onClick={() => postBill.mutate()}>{postBill.isPending ? 'Posting…' : 'Confirm posting'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleting && (
+        <div className="dialog-backdrop">
+          <div className="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Delete draft bill" onKeyDown={(event) => {
+            if (event.key === 'Escape' && !deleteDraft.isPending) setDeleting(false);
+          }}>
+            <p className="eyebrow">Discard draft</p>
+            <h2>Delete this draft bill?</h2>
+            <p>The draft and its lines are removed for good. Nothing has been posted to the ledger, so no entry is affected.</p>
+            <div className="dialog-actions">
+              <button autoFocus className="secondary-button" type="button" disabled={deleteDraft.isPending} onClick={() => setDeleting(false)}>Cancel</button>
+              <button className="primary-button" type="button" disabled={deleteDraft.isPending} onClick={() => deleteDraft.mutate()}>{deleteDraft.isPending ? 'Deleting…' : 'Confirm delete'}</button>
             </div>
           </div>
         </div>

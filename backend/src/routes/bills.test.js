@@ -307,6 +307,61 @@ describe('PATCH /bills/:id', () => {
   });
 });
 
+describe('DELETE /bills/:id', () => {
+  const del = (headers, id) => request(app).delete(`/api/v1/bills/${id}`).set(headers);
+
+  it('deletes a draft with its lines, frees its Supplier Reference and audits bill.deleted', async () => {
+    const bill = (await post(owner.headers, billBody({ referenceNo: 'DEL-1' }))).body;
+
+    const res = await del(owner.headers, bill.id);
+    expect(res.status).toBe(204);
+    expect(await prisma.document.count({ where: { id: bill.id } })).toBe(0);
+    expect(await prisma.documentLine.count({ where: { documentId: bill.id } })).toBe(0);
+    expect((await request(app).get(`/api/v1/bills/${bill.id}`).set(owner.headers)).status).toBe(404);
+
+    const again = await post(owner.headers, billBody({ referenceNo: 'del-1' }));
+    expect(again.status).toBe(201);
+
+    await vi.waitFor(async () => {
+      const events = await prisma.auditLog.findMany({ where: { organizationId: owner.orgId, entityId: bill.id }, orderBy: { createdAt: 'asc' } });
+      expect(events.map((e) => e.action)).toEqual(['bill.created', 'bill.deleted']);
+    });
+  });
+
+  it('409s not_draft for a posted Bill and keeps it', async () => {
+    const bill = (await post(owner.headers, billBody({ referenceNo: 'DEL-POSTED' }))).body;
+    await prisma.document.update({ where: { id: bill.id }, data: { status: 'POSTED' } });
+
+    const res = await del(owner.headers, bill.id);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('not_draft');
+    expect(await prisma.document.count({ where: { id: bill.id } })).toBe(1);
+  });
+
+  it("404s an unknown id, an Invoice id and another organization's Bill, leaving them in place", async () => {
+    const theirs = (await post(other.headers, theirBillBody('DEL-THEIRS'))).body;
+    const invoice = await prisma.document.create({
+      data: {
+        organizationId: owner.orgId, fiscalYearId: fy82.id, docType: 'INVOICE', docDate: new Date('2025-07-20'),
+        postingDate: new Date('2025-07-20'), partyId: supplier.id, status: 'DRAFT',
+      },
+    });
+
+    expect((await del(owner.headers, theirs.id)).status).toBe(404);
+    expect((await del(owner.headers, invoice.id)).status).toBe(404);
+    expect((await del(owner.headers, '00000000-0000-0000-0000-000000000000')).status).toBe(404);
+    expect(await prisma.document.count({ where: { id: { in: [theirs.id, invoice.id] } } })).toBe(2);
+    expect(await prisma.documentLine.count({ where: { documentId: theirs.id } })).toBe(1);
+  });
+
+  it('lets a Clerk delete a draft and refuses a Viewer', async () => {
+    const bill = (await post(owner.headers, billBody({ referenceNo: 'DEL-PERM' }))).body;
+    expect((await del(viewer, bill.id)).status).toBe(403);
+    expect(await prisma.document.count({ where: { id: bill.id } })).toBe(1);
+    expect((await del(clerk, bill.id)).status).toBe(204);
+  });
+});
+
 describe('GET /bills', () => {
   it('lists Bills filtered by Supplier and status, and a Viewer can read them', async () => {
     const sup2 = await prisma.party.create({ data: { organizationId: owner.orgId, type: 'SUPPLIER', code: 'SUP-L', name: 'List Supplier', creditDays: 0 } });

@@ -144,6 +144,25 @@ describe('Day 3 invoice editor', () => {
     expect(screen.getByText('Description is required')).toBeInTheDocument();
   });
 
+  it('offers Customers and parties of both kinds, not Supplier-only parties', async () => {
+    server.use(
+      http.get('/api/v1/parties', () => HttpResponse.json([
+        party,
+        { ...party, id: 'b0000000-0000-4000-8000-000000000001', type: 'both', code: 'BOTH-1', name: 'Both Ways Ltd' },
+        { ...party, id: 'b0000000-0000-4000-8000-000000000002', type: 'supplier', code: 'SUP-1', name: 'Only A Supplier' },
+      ])),
+      http.get('/api/v1/accounts', () => HttpResponse.json([account])),
+      http.get('/api/v1/tax-codes', () => HttpResponse.json([taxCode])),
+    );
+
+    renderDay3('/invoices/new');
+    const select = await screen.findByLabelText('Customer');
+    const options = within(select).getAllByRole('option').map((o) => o.textContent);
+    expect(options.some((text) => text.includes('Himalayan Trek Supplies'))).toBe(true);
+    expect(options.some((text) => text.includes('Both Ways Ltd'))).toBe(true);
+    expect(options.some((text) => text.includes('Only A Supplier'))).toBe(false);
+  });
+
   it('previews valid lines before the invoice header is complete', async () => {
     const user = userEvent.setup();
     server.use(
@@ -283,6 +302,66 @@ describe('Day 3 invoice detail and posting', () => {
 
     expect(await screen.findByText('INV-2082-0001')).toBeInTheDocument();
     expect(screen.getByText('Debits equal credits')).toBeInTheDocument();
+  });
+});
+
+describe('Day 3 invoice detail: deleting a draft', () => {
+  function serveDraft() {
+    server.use(
+      http.get('/api/v1/invoices/:id', () => HttpResponse.json(draftInvoice)),
+      http.get('/api/v1/parties', () => HttpResponse.json([party])),
+      http.get('/api/v1/accounts', () => HttpResponse.json([account])),
+    );
+  }
+
+  it('confirms, deletes the draft and returns to the invoice list', async () => {
+    const user = userEvent.setup();
+    let deleted = null;
+    serveDraft();
+    server.use(http.delete('/api/v1/invoices/:id', ({ params }) => {
+      deleted = params.id;
+      return new HttpResponse(null, { status: 204 });
+    }));
+
+    renderDay3(`/invoices/${INVOICE_ID}`);
+    await user.click(await screen.findByRole('button', { name: 'Delete draft' }));
+    expect(deleted).toBeNull();
+    await user.click(within(screen.getByRole('dialog', { name: 'Delete draft invoice' })).getByRole('button', { name: 'Confirm delete' }));
+
+    expect(await screen.findByRole('heading', { name: 'Invoices' })).toBeInTheDocument();
+    expect(deleted).toBe(INVOICE_ID);
+  });
+
+  it('cancels without deleting', async () => {
+    const user = userEvent.setup();
+    let called = false;
+    serveDraft();
+    server.use(http.delete('/api/v1/invoices/:id', () => { called = true; return new HttpResponse(null, { status: 204 }); }));
+
+    renderDay3(`/invoices/${INVOICE_ID}`);
+    await user.click(await screen.findByRole('button', { name: 'Delete draft' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Delete draft invoice' })).getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Delete draft invoice' })).not.toBeInTheDocument();
+    expect(called).toBe(false);
+  });
+
+  it('is hidden without invoice.create, with the permission list missing, and on a posted invoice', async () => {
+    serveDraft();
+    const first = renderDay3(`/invoices/${INVOICE_ID}`, ['report.view', 'invoice.post']);
+    expect(await screen.findByText('Draft invoice')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete draft' })).not.toBeInTheDocument();
+    first.unmount();
+
+    const second = renderDay3(`/invoices/${INVOICE_ID}`, null);
+    expect(await screen.findByText('Draft invoice')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete draft' })).not.toBeInTheDocument();
+    second.unmount();
+
+    server.use(http.get('/api/v1/invoices/:id', () => HttpResponse.json({ ...draftInvoice, status: 'posted', docNo: 'INV-2082-0001' })));
+    renderDay3(`/invoices/${INVOICE_ID}`);
+    expect(await screen.findByText('INV-2082-0001')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete draft' })).not.toBeInTheDocument();
   });
 });
 

@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/authenticate.js';
 import { resolveTenant } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
 import { createDraftBill, updateDraftBill, previewBill } from '../lib/invoices/bill-service.js';
+import { deleteDraftDocument } from '../lib/accounting/delete-draft.js';
 import { postDocument } from '../lib/accounting/post-document.js';
 import { getBillPaymentHistory } from '../lib/accounting/payment-history.js';
 import { notFound } from '../lib/accounting/errors.js';
@@ -158,7 +159,18 @@ router.patch('/bills/:id', authorize('bill.create'), async (req, res, next) => {
   }
 });
 
-router.post('/bills/:id/post', authorize('bill.post'), async (req, res, next) => {
+router.delete('/bills/:id', authorize('bill.create'), async (req, res, next) => {
+  try {
+    const id = z.string().uuid().parse(req.params.id);
+    const doc = await deleteDraftDocument(actorFrom(req), id, 'BILL', 'Bill');
+    req.auditEntry = { action: 'bill.deleted', entityType: 'Document', entityId: doc.id, before: serializeBill(doc), after: null };
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/bills/:id/post',authorize('bill.post'), async (req, res, next) => {
   try {
     const id = z.string().uuid().parse(req.params.id);
     const entry = await postDocument(id, actorFrom(req));

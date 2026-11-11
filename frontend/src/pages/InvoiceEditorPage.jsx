@@ -221,7 +221,7 @@ export function InvoiceEditorPage() {
               <label>Customer
                 <select aria-invalid={Boolean(errors.partyId)} value={form.partyId} onChange={(event) => updateField('partyId', event.target.value)}>
                   <option value="">Select customer</option>
-                  {parties.data.filter((party) => party.isActive).map((party) => <option key={party.id} value={party.id}>{party.code} · {party.name}</option>)}
+                  {parties.data.filter((party) => party.isActive && ['customer', 'both'].includes(party.type)).map((party) => <option key={party.id} value={party.id}>{party.code} · {party.name}</option>)}
                 </select>
                 {errors.partyId && <span className="field-error" role="alert">{errors.partyId}</span>}
               </label>

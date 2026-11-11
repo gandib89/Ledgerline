@@ -129,3 +129,52 @@ describe('INV-3: subledger equals the general ledger after a partial receipt', (
     expect(subledgerTotal.toFixed(4)).toBe(ledgerBalance.toFixed(4));
   });
 });
+
+// Kept after INV-3: the BOTH receipt below is deliberately unallocated, which would skew its subledger check.
+describe('Receipt party', () => {
+  it('rejects a Supplier-only party with 422 party_not_customer and posts nothing', async () => {
+    const supplierOnly = await prisma.party.create({ data: { organizationId: owner.orgId, type: 'SUPPLIER', code: 'SUP-RCP', name: 'Supplier Only' } });
+    const before = await prisma.document.count({ where: { organizationId: owner.orgId, docType: 'RECEIPT' } });
+
+    const res = await request(app).post('/api/v1/receipts').set(owner.headers).send({
+      partyId: supplierOnly.id, docDate: '2025-07-21', depositAccountId: bankAccount.id, amount: 100, allocations: [],
+    });
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('party_not_customer');
+    expect(await prisma.document.count({ where: { organizationId: owner.orgId, docType: 'RECEIPT' } })).toBe(before);
+  });
+
+  it('accepts a party of type BOTH', async () => {
+    const both = await prisma.party.create({ data: { organizationId: owner.orgId, type: 'BOTH', code: 'BOTH-RCP', name: 'Both' } });
+    const res = await request(app).post('/api/v1/receipts').set(owner.headers).send({
+      partyId: both.id, docDate: '2025-07-21', depositAccountId: bankAccount.id, amount: 100, allocations: [],
+    });
+    expect(res.status).toBe(201);
+  });
+});
+
+describe('Receipt deposit account', () => {
+  const receipt = (depositAccountId) => request(app).post('/api/v1/receipts').set(owner.headers).send({
+    partyId: party.id, docDate: '2025-07-21', depositAccountId, amount: 10, allocations: [],
+  });
+  const receiptCount = () => prisma.document.count({ where: { organizationId: owner.orgId, docType: 'RECEIPT' } });
+
+  it('refuses an account that is neither bank-flagged nor Cash in Hand, and posts nothing', async () => {
+    const ar = await prisma.account.findFirstOrThrow({ where: { organizationId: owner.orgId, code: '1100' } });
+    const before = await receiptCount();
+    for (const accountId of [salesAccount.id, ar.id]) {
+      const res = await receipt(accountId);
+      expect(res.status).toBe(422);
+      expect(res.body.error.code).toBe('invalid_deposit_account');
+    }
+    expect(await receiptCount()).toBe(before);
+  });
+
+  it('accepts a bank-flagged account and Cash in Hand (1010)', async () => {
+    const cash = await prisma.account.create({ data: { organizationId: owner.orgId, code: '1010', name: 'Cash in Hand', type: 'ASSET' } });
+    expect((await receipt(bankAccount.id)).status).toBe(201);
+    const res = await receipt(cash.id);
+    expect(res.status).toBe(201);
+    expect(res.body.journalEntry.lines.find((l) => l.accountId === cash.id)).toMatchObject({ debit: '10.00' });
+  });
+});

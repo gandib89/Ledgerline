@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/authenticate.js';
 import { resolveTenant } from '../middleware/resolve-tenant.js';
 import { authorize } from '../middleware/authorize.js';
 import { createDraftInvoice, updateDraftInvoice, previewInvoice } from '../lib/invoices/invoice-service.js';
+import { deleteDraftDocument } from '../lib/accounting/delete-draft.js';
 import { postDocument } from '../lib/accounting/post-document.js';
 import { notFound } from '../lib/accounting/errors.js';
 import { serializeJournalEntry } from './journal-entries.js';
@@ -212,7 +213,18 @@ router.patch('/invoices/:id', authorize('invoice.create'), async (req, res, next
   }
 });
 
-router.post('/invoices/:id/post', authorize('invoice.post'), async (req, res, next) => {
+router.delete('/invoices/:id', authorize('invoice.create'), async (req, res, next) => {
+  try {
+    const id = z.string().uuid().parse(req.params.id);
+    const doc = await deleteDraftDocument(actorFrom(req), id, 'INVOICE', 'Invoice');
+    req.auditEntry = { action: 'invoice.deleted', entityType: 'Document', entityId: doc.id, before: serializeInvoice(doc), after: null };
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/invoices/:id/post',authorize('invoice.post'), async (req, res, next) => {
   try {
     const id = z.string().uuid().parse(req.params.id);
     const entry = await postDocument(id, actorFrom(req));
