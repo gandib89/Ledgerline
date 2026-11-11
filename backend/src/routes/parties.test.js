@@ -75,3 +75,18 @@ describe('party PAN/VAT number', () => {
     expect(patched.body.panVatNo).toBeNull();
   });
 });
+
+describe('POST /parties duplicate code', () => {
+  it('returns 409 duplicate_party_code, not a 500, when the code is already used in the organization', async () => {
+    const res = await request(app).post('/api/v1/parties').set(owner.headers).send({ type: 'supplier', code: 'S-001', name: 'Another name' });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('duplicate_party_code');
+    expect(res.body.error.message).toContain('S-001');
+  });
+
+  it('allows the same code in a different organization', async () => {
+    const other = await makeUserWithOrg(app, 'other-owner@test.com', 'Other Trading');
+    const res = await request(app).post('/api/v1/parties').set(other.headers).send({ type: 'supplier', code: 'S-001', name: 'Same code elsewhere' });
+    expect(res.status).toBe(201);
+  });
+});
