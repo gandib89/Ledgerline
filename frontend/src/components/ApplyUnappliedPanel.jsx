@@ -5,7 +5,7 @@ import { Money } from './Money.jsx';
 import { useToast } from './toast-context.js';
 import { apiRequest } from '../lib/api-client.js';
 import { fetchAllPages } from '../lib/fetch-all-pages.js';
-import { isAllocationValid, remainingAmount, sumAmounts, toCents } from '../lib/amount.js';
+import { isAllocationValid, remainingAmount, toCents } from '../lib/amount.js';
 
 const KINDS = {
   receipt: {
