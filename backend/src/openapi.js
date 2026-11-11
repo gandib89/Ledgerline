@@ -257,6 +257,18 @@ registry.registerPath({
   responses: { 201: { description: 'Created', ...json(z.object({ receipt, journalEntry })) }, 422: errorResponse },
 });
 registry.registerPath({
+  method: 'post', path: '/api/v1/receipts/{id}/allocations', tags: ['Receipts'], summary: 'Apply the Unapplied Amount later to open Invoices (payment.create, Idempotency-Key required; no journal entry)',
+  security: AUTH,
+  request: {
+    params: z.object({ id: uuid() }),
+    headers: [...tenantParams, z.string().openapi({ param: { name: 'Idempotency-Key', in: 'header', required: true } })],
+    body: { content: { 'application/json': { schema: z.object({
+      allocations: z.array(z.object({ invoiceId: uuid(), amount: money() })).min(1),
+    }) } } },
+  },
+  responses: { 201: { description: 'Created' }, 400: errorResponse, 404: errorResponse, 422: errorResponse },
+});
+registry.registerPath({
   method: 'get', path: '/api/v1/receipts/{id}', tags: ['Receipts'], summary: 'Get a receipt',
   security: AUTH, request: { headers: tenantParams, params: z.object({ id: uuid() }) },
   responses: { 200: { description: 'OK', ...json(receipt) }, 404: errorResponse },
@@ -276,6 +288,18 @@ registry.registerPath({
     }) } } },
   },
   responses: { 201: { description: 'Created', ...json(z.object({ supplierPayment, journalEntry })) }, 400: errorResponse, 404: errorResponse, 422: errorResponse },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/supplier-payments/{id}/allocations', tags: ['Supplier Payments'], summary: 'Apply the Unapplied Amount later to open Bills (supplier_payment.create, Idempotency-Key required; no journal entry)',
+  security: AUTH,
+  request: {
+    params: z.object({ id: uuid() }),
+    headers: [...tenantParams, z.string().openapi({ param: { name: 'Idempotency-Key', in: 'header', required: true } })],
+    body: { content: { 'application/json': { schema: z.object({
+      allocations: z.array(z.object({ billId: uuid(), amount: money() })).min(1),
+    }) } } },
+  },
+  responses: { 201: { description: 'Created' }, 400: errorResponse, 404: errorResponse, 422: errorResponse },
 });
 registry.registerPath({
   method: 'get', path: '/api/v1/supplier-payments/{id}', tags: ['Supplier Payments'], summary: 'Get a Supplier Payment',

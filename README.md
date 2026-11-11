@@ -64,7 +64,6 @@ which is why the plan treats it as conditional rather than required.
 
 These are gaps we know about and have chosen not to fix yet.
 
-- There is no endpoint to apply an Unapplied Amount later. A Receipt or Supplier Payment that is not fully allocated when it is posted stays partly unapplied. This affects both AR and AP.
 - Historical aging is not possible while reversal hard-deletes allocations. Once a payment is reversed, its allocations are gone, so an aging report for a past date cannot be rebuilt accurately.
 - Reversals have no per-document-type audit events. Every reversal is logged as a journal entry reversal, not as an invoice, bill, receipt or payment reversal.
 - Existing audit action names mix tenses, for example `supplier_payment.posted` next to `journal_entry.reversal_posted`.

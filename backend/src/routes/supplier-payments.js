@@ -9,6 +9,7 @@ import { runIdempotent } from '../lib/idempotency/run-idempotent.js';
 import { notFound } from '../lib/accounting/errors.js';
 import { dec } from '../lib/money.js';
 import { serializeJournalEntry } from './journal-entries.js';
+import { applyUnappliedHandler } from './apply-unapplied.js';
 
 const router = Router();
 
@@ -105,6 +106,12 @@ router.post('/supplier-payments', authorize('supplier_payment.create'), async (r
     next(err);
   }
 });
+
+// Allocates the payment's Unapplied Amount to open Bills later; no journal entry.
+router.post('/supplier-payments/:id/allocations', authorize('supplier_payment.create'), applyUnappliedHandler({
+  kind: 'supplierPayment', endpoint: 'POST /supplier-payments/:id/allocations', idField: 'billId',
+  serialize: serializeSupplierPayment, responseKey: 'supplierPayment', auditAction: 'supplier_payment.allocated',
+}));
 
 router.get('/supplier-payments/:id', authorize('report.view'), async (req, res, next) => {
   try {

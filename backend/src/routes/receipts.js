@@ -8,6 +8,7 @@ import { postReceipt } from '../lib/accounting/receipt-service.js';
 import { runIdempotent } from '../lib/idempotency/run-idempotent.js';
 import { notFound } from '../lib/accounting/errors.js';
 import { serializeJournalEntry } from './journal-entries.js';
+import { applyUnappliedHandler } from './apply-unapplied.js';
 
 const router = Router();
 
@@ -107,6 +108,12 @@ router.post('/receipts', authorize('payment.create'), async (req, res, next) => 
     next(err);
   }
 });
+
+// Allocates the receipt's Unapplied Amount to open Invoices later; no journal entry.
+router.post('/receipts/:id/allocations', authorize('payment.create'), applyUnappliedHandler({
+  kind: 'receipt', endpoint: 'POST /receipts/:id/allocations', idField: 'invoiceId',
+  serialize: serializeReceipt, responseKey: 'receipt', auditAction: 'receipt.allocated',
+}));
 
 router.get('/receipts/:id', authorize('report.view'), async (req, res, next) => {
   try {
