@@ -89,4 +89,15 @@ describe('Day 6 audit trail', () => {
     expect(screen.getByText('Audit access required')).toBeInTheDocument();
     expect(called).not.toHaveBeenCalled();
   });
+
+  it('defaults to hidden when the permission list is missing altogether', async () => {
+    const called = vi.fn();
+    server.use(http.get('/api/v1/audit-log', () => { called(); return HttpResponse.json(entries); }));
+    const { unmount } = renderPage({});
+    expect(screen.getByText('Audit access required')).toBeInTheDocument();
+    unmount();
+    renderPage(null);
+    expect(screen.getByText('Audit access required')).toBeInTheDocument();
+    expect(called).not.toHaveBeenCalled();
+  });
 });
